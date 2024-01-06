@@ -1667,8 +1667,10 @@ void handle_controller_cursor_input(void) {
     }
 
     // Move cursor
-    sCursorPos[0] += rawStickX / 8;
-    sCursorPos[1] += rawStickY / 8;
+    if (should_render_3d_frame(1)) {
+        sCursorPos[0] += rawStickX / 8;
+        sCursorPos[1] += rawStickY / 8;
+    }
 
     // Stop cursor from going offscreen
     if (sCursorPos[0] > 132.0f) {
@@ -1706,7 +1708,7 @@ void print_menu_cursor(void) {
         // Grabbing
         gSPDisplayList(gDisplayListHead++, dl_menu_grabbing_hand);
     gSPPopMatrix(gDisplayListHead++, G_MTX_MODELVIEW);
-    if (sCursorClickingTimer != 0) {
+    if (sCursorClickingTimer != 0 && should_render_3d_frame(1)) {
         sCursorClickingTimer++; // This is a very strange way to implement a timer? It counts up and
                                 // then resets to 0 instead of just counting down to 0.
         if (sCursorClickingTimer == 5) {

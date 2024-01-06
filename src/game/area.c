@@ -3,6 +3,7 @@
 #include "prevent_bss_reordering.h"
 #include "area.h"
 #include "sm64.h"
+#include "emutest.h"
 #include "gfx_dimensions.h"
 #include "behavior_data.h"
 #include "game_init.h"
@@ -361,6 +362,36 @@ void play_transition_after_delay(s16 transType, s16 time, u8 red, u8 green, u8 b
 }
 
 void render_game(void) {
+    switch(gRender3D) {
+        case RENDER_3D_MISSING_FBE:
+            print_text(16, 32, "ENABLE FRAMEBUFFER");
+            print_text(16, 16, "EMULATION");
+            break;
+        case RENDER_3D_UNSUPPORTED:
+            if (gEmulator & EMU_CONSOLE) {
+                print_text(16, 32, "CONSOLE NOT");
+                print_text(16, 16, "SUPPORTED");
+            } else if (gEmulator & EMU_WIIVC) {
+                print_text(16, 32, "VIRTUAL CONSOLE");
+                print_text(16, 16, "NOT SUPPORTED");
+            } else {
+                print_text(16, 32, "THIS EMULATOR IS");
+                print_text(16, 16, "NOT SUPPORTED");
+            }
+            break;
+        default:
+            if (g3DTextDialog == 1) {
+                print_text(16, 32, "EYE DIST");
+                print_text(16, 16, "PERCENTAGE");
+                print_text_fmt_int(160, 24, "%d", gViewOffset3DEyeDistPercentage);
+            } else if (g3DTextDialog == 0) {
+                print_text(16, 32, "FOCAL DIST");
+                print_text(16, 16, "PERCENTAGE");
+                print_text_fmt_int(160, 24, "%d", gViewOffset3DFocalPointDistPercentage);
+            }
+            break;
+    }
+
     if (gCurrentArea != NULL && !gWarpTransition.pauseRendering) {
         geo_process_root(gCurrentArea->unk04, D_8032CE74, D_8032CE78, gFBSetColor);
 
@@ -400,18 +431,27 @@ void render_game(void) {
                     }
                 }
             } else {
-                gWarpTransDelay--;
+                if (should_render_3d_frame(1)) {
+                    gWarpTransDelay--;
+                }
             }
         }
     } else {
         render_text_labels();
-        if (D_8032CE78 != NULL) {
-            clear_viewport(D_8032CE78, gWarpTransFBSetColor);
-        } else {
-            clear_framebuffer(gWarpTransFBSetColor);
+        if (gFBECheckFinished) {
+            if (gRender3D == RENDER_3D_ENABLED && gWarpTransFBSetColor == 0x00010001) {
+                gWarpTransFBSetColor = 0x00030003; // Stupid GlideN64 hack since it handles the framebuffer in incredibly annoying ways...
+            }
+            if (D_8032CE78 != NULL) {
+                clear_viewport(D_8032CE78, gWarpTransFBSetColor);
+            } else {
+                clear_framebuffer(gWarpTransFBSetColor);
+            }
         }
     }
 
-    D_8032CE74 = NULL;
-    D_8032CE78 = NULL;
+    if (should_render_3d_frame(1)) {
+        D_8032CE74 = NULL;
+        D_8032CE78 = NULL;
+    }
 }

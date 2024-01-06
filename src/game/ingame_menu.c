@@ -39,6 +39,11 @@ s16 gDialogY;
 s16 gCutsceneMsgXOffset;
 s16 gCutsceneMsgYOffset;
 s8 gRedCoinsCollected;
+#ifdef WIDE
+u8 textCurrRatio43[] = { TEXT_HUD_CURRENT_RATIO_43 };
+u8 textCurrRatio169[] = { TEXT_HUD_CURRENT_RATIO_169 };
+u8 textPressR[] = { TEXT_HUD_PRESS_R };
+#endif
 
 extern u8 gLastCompletedCourseNum;
 extern u8 gLastCompletedStarNum;
@@ -710,6 +715,10 @@ void print_credits_string(s16 x, s16 y, const u8 *str) {
 
 void handle_menu_scrolling(s8 scrollDirection, s8 *currentIndex, s8 minIndex, s8 maxIndex) {
     u8 index = 0;
+
+    if (!should_render_3d_frame(0)) {
+        return;
+    }
 
     if (scrollDirection == MENU_SCROLL_VERTICAL) {
         if (gPlayer3Controller->rawStickY > 60) {
@@ -1684,6 +1693,10 @@ void render_dialog_entries(void) {
     s8 lowerBound = 0;
 #endif
 
+    f32 dboxTimerBackup = gDialogBoxOpenTimer;
+    f32 dboxScaleBackup = gDialogBoxScale;
+    f32 dtxtPosBackup = gDialogTextPos;
+
 #ifdef VERSION_EU
     gInGameLanguage = eu_get_language();
     switch (gInGameLanguage) {
@@ -1715,22 +1728,24 @@ void render_dialog_entries(void) {
 
     switch (gDialogBoxState) {
         case DIALOG_STATE_OPENING:
-            if (gDialogBoxOpenTimer == DEFAULT_DIALOG_BOX_ANGLE) {
-                play_dialog_sound(gDialogID);
-                play_sound(SOUND_MENU_MESSAGE_APPEAR, gGlobalSoundSource);
-            }
+            if (should_render_3d_frame(1)) {
+                if (gDialogBoxOpenTimer == DEFAULT_DIALOG_BOX_ANGLE) {
+                    play_dialog_sound(gDialogID);
+                    play_sound(SOUND_MENU_MESSAGE_APPEAR, gGlobalSoundSource);
+                }
 
-            if (gDialogBoxType == DIALOG_TYPE_ROTATE) {
-                gDialogBoxOpenTimer -= 7.5;
-                gDialogBoxScale -= 1.5;
-            } else {
-                gDialogBoxOpenTimer -= 10.0;
-                gDialogBoxScale -= 2.0;
-            }
+                if (gDialogBoxType == DIALOG_TYPE_ROTATE) {
+                    gDialogBoxOpenTimer -= 7.5;
+                    gDialogBoxScale -= 1.5;
+                } else {
+                    gDialogBoxOpenTimer -= 10.0;
+                    gDialogBoxScale -= 2.0;
+                }
 
-            if (gDialogBoxOpenTimer == 0.0f) {
-                gDialogBoxState = DIALOG_STATE_VERTICAL;
-                gDialogLineNum = 1;
+                if (gDialogBoxOpenTimer == 0.0f) {
+                    gDialogBoxState = DIALOG_STATE_VERTICAL;
+                    gDialogLineNum = 1;
+                }
             }
 #ifndef VERSION_JP
             lowerBound = 1;
@@ -1756,12 +1771,14 @@ void render_dialog_entries(void) {
             break;
 
         case DIALOG_STATE_HORIZONTAL:
-            gDialogScrollOffsetY += dialog->linesPerBox * 2;
+            if (should_render_3d_frame(1)) {
+                gDialogScrollOffsetY += dialog->linesPerBox * 2;
 
-            if (gDialogScrollOffsetY >= dialog->linesPerBox * DIAG_VAL1) {
-                gDialogTextPos = gLastDialogPageStrPos;
-                gDialogBoxState = DIALOG_STATE_VERTICAL;
-                gDialogScrollOffsetY = 0;
+                if (gDialogScrollOffsetY >= dialog->linesPerBox * DIAG_VAL1) {
+                    gDialogTextPos = gLastDialogPageStrPos;
+                    gDialogBoxState = DIALOG_STATE_VERTICAL;
+                    gDialogScrollOffsetY = 0;
+                }
             }
 #ifndef VERSION_JP
             lowerBound = (gDialogScrollOffsetY / DIAG_VAL1) + 1;
@@ -1769,27 +1786,29 @@ void render_dialog_entries(void) {
             break;
 
         case DIALOG_STATE_CLOSING:
-            if (gDialogBoxOpenTimer == 20.0f) {
-                level_set_transition(0, NULL);
-                play_sound(SOUND_MENU_MESSAGE_DISAPPEAR, gGlobalSoundSource);
+            if (should_render_3d_frame(1)) {
+                if (gDialogBoxOpenTimer == 20.0f) {
+                    level_set_transition(0, NULL);
+                    play_sound(SOUND_MENU_MESSAGE_DISAPPEAR, gGlobalSoundSource);
 
-                if (gDialogBoxType == DIALOG_TYPE_ZOOM) {
-                    trigger_cutscene_dialog(2);
+                    if (gDialogBoxType == DIALOG_TYPE_ZOOM) {
+                        trigger_cutscene_dialog(2);
+                    }
+
+                    gDialogResponse = gDialogLineNum;
                 }
 
-                gDialogResponse = gDialogLineNum;
-            }
+                gDialogBoxOpenTimer = gDialogBoxOpenTimer + 10.0f;
+                gDialogBoxScale = gDialogBoxScale + 2.0f;
 
-            gDialogBoxOpenTimer = gDialogBoxOpenTimer + 10.0f;
-            gDialogBoxScale = gDialogBoxScale + 2.0f;
-
-            if (gDialogBoxOpenTimer == DEFAULT_DIALOG_BOX_ANGLE) {
-                gDialogBoxState = DIALOG_STATE_OPENING;
-                gDialogID = DIALOG_NONE;
-                gDialogTextPos = 0;
-                gLastDialogResponse = 0;
-                gLastDialogPageStrPos = 0;
-                gDialogResponse = DIALOG_RESPONSE_NONE;
+                if (gDialogBoxOpenTimer == DEFAULT_DIALOG_BOX_ANGLE) {
+                    gDialogBoxState = DIALOG_STATE_OPENING;
+                    gDialogID = DIALOG_NONE;
+                    gDialogTextPos = 0;
+                    gLastDialogResponse = 0;
+                    gLastDialogPageStrPos = 0;
+                    gDialogResponse = DIALOG_RESPONSE_NONE;
+                }
             }
 #ifndef VERSION_JP
             lowerBound = 1;
@@ -1838,6 +1857,12 @@ void render_dialog_entries(void) {
     if (gLastDialogPageStrPos != -1 && gDialogBoxState == DIALOG_STATE_VERTICAL) {
         render_dialog_triangle_next(dialog->linesPerBox);
     }
+
+    if (!should_render_3d_frame(1)) {
+        gDialogBoxOpenTimer = dboxTimerBackup;
+        gDialogBoxScale = dboxScaleBackup;
+        gDialogTextPos = dtxtPosBackup;
+    }
 }
 
 // Calls a gMenuMode value defined by render_menus_and_dialogs cases
@@ -1858,6 +1883,10 @@ void dl_rgba16_begin_cutscene_msg_fade(void) {
 
 void dl_rgba16_stop_cutscene_msg_fade(void) {
     gSPDisplayList(gDisplayListHead++, dl_rgba16_text_end);
+
+    if (!should_render_3d_frame(1)) {
+        return;
+    }
 
     if (gCutsceneMsgFade < 250) {
         gCutsceneMsgFade += 25;
@@ -1961,32 +1990,34 @@ void do_cutscene_handler(void) {
 
     gSPDisplayList(gDisplayListHead++, dl_ia_text_end);
 
-    // if the timing variable is less than 5, increment
-    // the fade until we are at full opacity.
-    if (gCutsceneMsgTimer < 5) {
-        gCutsceneMsgFade += 50;
-    }
+    if (should_render_3d_frame(1)) {
+        // if the timing variable is less than 5, increment
+        // the fade until we are at full opacity.
+        if (gCutsceneMsgTimer < 5) {
+            gCutsceneMsgFade += 50;
+        }
 
-    // if the cutscene frame length + the fade-in counter is
-    // less than the timer, it means we have exceeded the
-    // time that the message is supposed to remain on
-    // screen. if (message_duration = 50) and (msg_timer = 55)
-    // then after the first 5 frames, the message will remain
-    // on screen for another 50 frames until it starts fading.
-    if (gCutsceneMsgDuration + 5 < gCutsceneMsgTimer) {
-        gCutsceneMsgFade -= 50;
-    }
+        // if the cutscene frame length + the fade-in counter is
+        // less than the timer, it means we have exceeded the
+        // time that the message is supposed to remain on
+        // screen. if (message_duration = 50) and (msg_timer = 55)
+        // then after the first 5 frames, the message will remain
+        // on screen for another 50 frames until it starts fading.
+        if (gCutsceneMsgDuration + 5 < gCutsceneMsgTimer) {
+            gCutsceneMsgFade -= 50;
+        }
 
-    // like the first check, it takes 5 frames to fade out, so
-    // perform a + 10 to account for the earlier check (10-5=5).
-    if (gCutsceneMsgDuration + 10 < gCutsceneMsgTimer) {
-        gCutsceneMsgIndex = -1;
-        gCutsceneMsgFade = 0;
-        gCutsceneMsgTimer = 0;
-        return;
-    }
+        // like the first check, it takes 5 frames to fade out, so
+        // perform a + 10 to account for the earlier check (10-5=5).
+        if (gCutsceneMsgDuration + 10 < gCutsceneMsgTimer) {
+            gCutsceneMsgIndex = -1;
+            gCutsceneMsgFade = 0;
+            gCutsceneMsgTimer = 0;
+            return;
+        }
 
-    gCutsceneMsgTimer++;
+        gCutsceneMsgTimer++;
+    }
 }
 
 #ifdef VERSION_JP
@@ -2052,27 +2083,29 @@ void print_peach_letter_message(void) {
         gCutsceneMsgFade = 0;
     }
 
-    // we're less than 20 increments, so increase the fade.
-    if (gCutsceneMsgTimer < 20) {
-        gCutsceneMsgFade += 10;
-    }
+    if (should_render_3d_frame(1)) {
+        // we're less than 20 increments, so increase the fade.
+        if (gCutsceneMsgTimer < 20) {
+            gCutsceneMsgFade += 10;
+        }
 
-    // we're after PEACH_MESSAGE_TIMER increments, so decrease the fade.
-    if (gCutsceneMsgTimer > PEACH_MESSAGE_TIMER) {
-        gCutsceneMsgFade -= 10;
-    }
+        // we're after PEACH_MESSAGE_TIMER increments, so decrease the fade.
+        if (gCutsceneMsgTimer > PEACH_MESSAGE_TIMER) {
+            gCutsceneMsgFade -= 10;
+        }
 
-    // 20 increments after the start of the decrease, we're
-    // back where we are, so reset everything at the end.
-    if (gCutsceneMsgTimer > (PEACH_MESSAGE_TIMER + 20)) {
-        gCutsceneMsgIndex = -1;
-        gCutsceneMsgFade = 0; //! uselessly reset since the next execution will just set it to 0 again.
-        gDialogID = DIALOG_NONE;
-        gCutsceneMsgTimer = 0;
-        return; // return to avoid incrementing the timer
-    }
+        // 20 increments after the start of the decrease, we're
+        // back where we are, so reset everything at the end.
+        if (gCutsceneMsgTimer > (PEACH_MESSAGE_TIMER + 20)) {
+            gCutsceneMsgIndex = -1;
+            gCutsceneMsgFade = 0; //! uselessly reset since the next execution will just set it to 0 again.
+            gDialogID = DIALOG_NONE;
+            gCutsceneMsgTimer = 0;
+            return; // return to avoid incrementing the timer
+        }
 
-    gCutsceneMsgTimer++;
+        gCutsceneMsgTimer++;
+    }
 }
 
 /**
@@ -2167,6 +2200,28 @@ void render_pause_red_coins(void) {
         print_animated_red_coin(GFX_DIMENSIONS_FROM_RIGHT_EDGE(30) - x * 20, 16);
     }
 }
+
+#ifdef WIDE
+void render_widescreen_setting(void) {
+    gSPDisplayList(gDisplayListHead++, dl_ia_text_begin);
+    gDPSetEnvColor(gDisplayListHead++, 255, 255, 255, gDialogTextAlpha);
+    if (!gWidescreen) {
+        print_generic_string(216, 190, textCurrRatio43);
+        print_generic_string(216, 173, textPressR);
+    } else {
+        print_generic_string(212, 190, textCurrRatio169);
+        print_generic_string(212, 173, textPressR);
+    }
+    gSPDisplayList(gDisplayListHead++, dl_ia_text_end);
+
+    if (gPlayer1Controller->buttonPressed & R_TRIG){
+        gWidescreen ^= 1;
+        save_file_set_widescreen_mode(gWidescreen);
+    }
+}
+#else
+#define render_widescreen_setting()
+#endif
 
 #ifdef VERSION_EU
 u8 gTextCourse[][7] = {
@@ -2648,6 +2703,7 @@ s16 render_pause_courses_and_castle(void) {
                     index = MENU_OPT_DEFAULT;
                 }
 
+                render_widescreen_setting();
                 return index;
             }
             break;
@@ -2670,13 +2726,18 @@ s16 render_pause_courses_and_castle(void) {
                 gMenuMode = MENU_MODE_NONE;
                 gDialogBoxState = DIALOG_STATE_OPENING;
 
+                render_widescreen_setting();
                 return MENU_OPT_DEFAULT;
             }
             break;
     }
 
-    if (gDialogTextAlpha < 250) {
-        gDialogTextAlpha += 25;
+    render_widescreen_setting();
+
+    if (should_render_3d_frame(1)) {
+        if (gDialogTextAlpha < 250) {
+            gDialogTextAlpha += 25;
+        }
     }
 
     return MENU_OPT_NONE;
@@ -3044,17 +3105,32 @@ s16 render_course_complete_screen(void) {
             break;
     }
 
-    if (gDialogTextAlpha < 250) {
-        gDialogTextAlpha += 25;
-    }
+    if (should_render_3d_frame(1)) {
+        if (gDialogTextAlpha < 250) {
+            gDialogTextAlpha += 25;
+        }
 
-    gCourseDoneMenuTimer++;
+        gCourseDoneMenuTimer++;
+    }
 
     return MENU_OPT_NONE;
 }
 
 s16 render_menus_and_dialogs(void) {
     s16 index = MENU_OPT_NONE;
+
+    s16 menuModeBackup = gMenuMode;
+    u16 buttonDownBackup = gPlayer1Controller->buttonDown;
+    u16 buttonPressedBackup = gPlayer1Controller->buttonPressed;
+    u16 buttonDownBackup3 = gPlayer3Controller->buttonDown;
+    u16 buttonPressedBackup3 = gPlayer3Controller->buttonPressed;
+
+    if (!should_render_3d_frame(1)) {
+        gPlayer1Controller->buttonDown = 0;
+        gPlayer1Controller->buttonPressed = 0;
+        gPlayer3Controller->buttonDown = 0;
+        gPlayer3Controller->buttonPressed = 0;
+    }
 
     create_dl_ortho_matrix();
 
@@ -3074,16 +3150,40 @@ s16 render_menus_and_dialogs(void) {
                 break;
         }
 
-        gDialogColorFadeTimer = (s16) gDialogColorFadeTimer + 0x1000;
+        if (should_render_3d_frame(0)) {
+            gDialogColorFadeTimer = (s16) gDialogColorFadeTimer + 0x1000;
+        }
     } else if (gDialogID != DIALOG_NONE) {
         // The Peach "Dear Mario" message needs to be repositioned separately
         if (gDialogID == DIALOG_020) {
             print_peach_letter_message();
+
+            if (!should_render_3d_frame(1)) {
+                gMenuMode = menuModeBackup;
+                index = 0;
+                gPlayer1Controller->buttonDown = buttonDownBackup;
+                gPlayer1Controller->buttonPressed = buttonPressedBackup;
+                gPlayer3Controller->buttonDown = buttonDownBackup3;
+                gPlayer3Controller->buttonPressed = buttonPressedBackup3;
+            }
+
             return index;
         }
 
         render_dialog_entries();
-        gDialogColorFadeTimer = (s16) gDialogColorFadeTimer + 0x1000;
+
+        if (should_render_3d_frame(0)) {
+            gDialogColorFadeTimer = (s16) gDialogColorFadeTimer + 0x1000;
+        }
+    }
+
+    if (!should_render_3d_frame(1)) {
+        gMenuMode = menuModeBackup;
+        index = 0;
+        gPlayer1Controller->buttonDown = buttonDownBackup;
+        gPlayer1Controller->buttonPressed = buttonPressedBackup;
+        gPlayer3Controller->buttonDown = buttonDownBackup3;
+        gPlayer3Controller->buttonPressed = buttonPressedBackup3;
     }
 
     return index;

@@ -31,6 +31,21 @@
 
 #define CBUTTON_MASK (U_CBUTTONS | D_CBUTTONS | L_CBUTTONS | R_CBUTTONS)
 
+// Distance from camera to focal point of 3D image
+f32 gViewOffset3DFocalPointDist = 450.0f;
+
+// View distance from the camera source point (half the distance between left and right viewing channels)
+f32 gViewOffset3DEyeDist = 7.0f;
+
+// Multiplier onto camera focal point distance, for user controlability with D-Pad
+s32 gViewOffset3DFocalPointDistPercentage = 100;
+
+// Multiplier onto camera eye distance, for user controlability with D-Pad
+s32 gViewOffset3DEyeDistPercentage = 100;
+
+// Dialog for printing 3D view text when view changes
+s32 g3DTextDialog = -1;
+
 /**
  * @file camera.c
  * Implements the camera system, including C-button input, camera modes, camera triggers, and cutscenes.
@@ -445,6 +460,8 @@ Vec3f sUnusedModeBasePosition_3 = { 646.0f, 143.0f, -1513.0f };
 Vec3f sUnusedModeBasePosition_4 = { 646.0f, 143.0f, -1513.0f };
 Vec3f sUnusedModeBasePosition_5 = { 646.0f, 143.0f, -1513.0f };
 
+struct CameraPosition cameraHistory[8];
+
 s32 update_radial_camera(struct Camera *c, Vec3f, Vec3f);
 s32 update_outward_radial_camera(struct Camera *c, Vec3f, Vec3f);
 s32 update_behind_mario_camera(struct Camera *c, Vec3f, Vec3f);
@@ -486,6 +503,193 @@ CameraTransition sModeTransitions[] = {
 // Move these two tables to another include file?
 extern u8 sDanceCutsceneIndexTable[][4];
 extern u8 sZoomOutAreaMasks[];
+
+void restore_camera(void *cameraPointer) {
+    if (cameraPointer == NULL) {
+        return;
+    }
+
+    for (s32 i = 0; i < ARRAY_COUNT(cameraHistory); i++) {
+        if (cameraPointer != cameraHistory[i].cameraPointer) {
+            continue;
+        }
+
+        if (cameraHistory[i].cameraType == CAMERATYPE_CAMERA) {
+            struct Camera *c = (struct Camera*) cameraHistory[i].cameraPointer;
+            vec3f_copy(c->pos, cameraHistory[i].pos);
+            vec3f_copy(c->focus, cameraHistory[i].focus);
+        } else if (cameraHistory[i].cameraType == CAMERATYPE_LAKITUSTATE) {
+            struct LakituState *ls = (struct LakituState*) cameraHistory[i].cameraPointer;
+            vec3f_copy(ls->pos, cameraHistory[i].pos);
+            vec3f_copy(ls->focus, cameraHistory[i].focus);
+        } else if (cameraHistory[i].cameraType == CAMERATYPE_GRAPHNODE) {
+            struct GraphNodeCamera *gc = (struct GraphNodeCamera*) cameraHistory[i].cameraPointer;
+            vec3f_copy(gc->pos, cameraHistory[i].pos);
+            vec3f_copy(gc->focus, cameraHistory[i].focus);
+        }
+
+        cameraHistory[i].cameraPointer = NULL;
+
+        return;
+    }
+}
+
+void restore_all_cameras(void) {
+    for (s32 i = 0; i < ARRAY_COUNT(cameraHistory); i++) {
+        if (cameraHistory[i].cameraPointer == NULL) {
+            continue;
+        }
+
+        if (cameraHistory[i].cameraType == CAMERATYPE_CAMERA) {
+            struct Camera *c = (struct Camera*) cameraHistory[i].cameraPointer;
+            vec3f_copy(c->pos, cameraHistory[i].pos);
+            vec3f_copy(c->focus, cameraHistory[i].focus);
+        } else if (cameraHistory[i].cameraType == CAMERATYPE_LAKITUSTATE) {
+            struct LakituState *ls = (struct LakituState*) cameraHistory[i].cameraPointer;
+            vec3f_copy(ls->pos, cameraHistory[i].pos);
+            vec3f_copy(ls->focus, cameraHistory[i].focus);
+        } else if (cameraHistory[i].cameraType == CAMERATYPE_GRAPHNODE) {
+            struct GraphNodeCamera *gc = (struct GraphNodeCamera*) cameraHistory[i].cameraPointer;
+            vec3f_copy(gc->pos, cameraHistory[i].pos);
+            vec3f_copy(gc->focus, cameraHistory[i].focus);
+        }
+
+        cameraHistory[i].cameraPointer = NULL;
+    }
+}
+
+void offset_camera(void *cameraPointer, enum CameraPositionTypes cameraType) {
+    s32 index = -1;
+    s16 cameraPitch;
+    s16 cameraYaw;
+    f32 cameraFocusDist;
+
+    f32 *pos;
+    f32 *focus;
+
+    for (s32 i = 0; i < ARRAY_COUNT(cameraHistory); i++) {
+        if (cameraPointer == cameraHistory[i].cameraPointer) {
+            return;
+        }
+
+        if (cameraHistory[i].cameraPointer == NULL && index < 0) {
+            index = i;
+        }
+    }
+
+    if (index < 0) {
+        return;
+    }
+
+    if (cameraType == CAMERATYPE_CAMERA) {
+        struct Camera *c = (struct Camera*) cameraPointer;
+        pos = c->pos;
+        focus = c->focus;
+    } else if (cameraType == CAMERATYPE_LAKITUSTATE) {
+        struct LakituState *ls = (struct LakituState*) cameraPointer;
+        pos = ls->pos;
+        focus = ls->focus;
+    } else if (cameraType == CAMERATYPE_GRAPHNODE) {
+        struct GraphNodeCamera *gc = (struct GraphNodeCamera*) cameraPointer;
+        pos = gc->pos;
+        focus = gc->focus;
+    } else {
+        return;
+    }
+
+    vec3f_get_dist_and_angle(pos, focus, &cameraFocusDist, &cameraPitch, &cameraYaw);
+    vec3f_copy(cameraHistory[index].pos, pos);
+    vec3f_copy(cameraHistory[index].focus, focus);
+    cameraHistory[index].cameraPointer = cameraPointer;
+    cameraHistory[index].cameraType = cameraType;
+
+    if (gRender3D != RENDER_3D_ENABLED) {
+        return;
+    }
+
+    s16 newYaw = cameraYaw;
+    if (should_render_3d_frame(0)) {
+        newYaw += 0x4000;
+    } else {
+        newYaw -= 0x4000;
+    }
+
+    cameraFocusDist *= (f32) gViewOffset3DFocalPointDistPercentage / 100.0f;
+
+    if (cameraFocusDist < 0.01f) {
+        cameraFocusDist = 0.01f;
+    }
+
+    f32 amp = gViewOffset3DFocalPointDist / cameraFocusDist;
+
+    for (s32 i = 0; i < 3; i++) {
+        focus[i] = pos[i] + ((focus[i] - pos[i]) * amp);
+    }
+
+    f32 eyeDist = gViewOffset3DEyeDist * ((f32) gViewOffset3DEyeDistPercentage / 100.0f);
+
+    pos[0] += eyeDist * sins(newYaw);
+    pos[2] += eyeDist * coss(newYaw);
+}
+
+void calculate_camera_viewpoints(void) {
+    static s32 textRenderTimer = 0;
+    static s32 heldFramesRemaining = -1;
+
+    if (gRender3D != RENDER_3D_ENABLED && gRender3D != RENDER_3D_DISABLED) {
+        return;
+    }
+
+    if (gPlayer1Controller->buttonDown & (L_JPAD | R_JPAD | U_JPAD | D_JPAD)) {
+        if (heldFramesRemaining <= 0) {
+            if (heldFramesRemaining < 0) {
+                heldFramesRemaining = 4;
+            } else {
+                heldFramesRemaining = 0;
+            }
+
+            if (gPlayer1Controller->buttonDown & U_JPAD) {
+                g3DTextDialog = 0;
+                if (gViewOffset3DFocalPointDistPercentage < 400) {
+                    gViewOffset3DFocalPointDistPercentage++;
+                }
+            } else if (gPlayer1Controller->buttonDown & D_JPAD) {
+                g3DTextDialog = 0;
+                if (gViewOffset3DFocalPointDistPercentage > 0) {
+                    gViewOffset3DFocalPointDistPercentage--;
+                }
+            } else if (gPlayer1Controller->buttonDown & L_JPAD) {
+                g3DTextDialog = 1;
+                if (gViewOffset3DEyeDistPercentage > 0) {
+                    gViewOffset3DEyeDistPercentage--;
+                    if (gViewOffset3DEyeDistPercentage <= 0) {
+                        gRender3D = RENDER_3D_DISABLED;
+                    }
+                }
+            } else if (gPlayer1Controller->buttonDown & R_JPAD) {
+                g3DTextDialog = 1;
+                if (gViewOffset3DEyeDistPercentage < 400) {
+                    gViewOffset3DEyeDistPercentage++;
+                    if (gViewOffset3DEyeDistPercentage > 0) {
+                        gRender3D = RENDER_3D_ENABLED;
+                    }
+                }
+            }
+        } else {
+            heldFramesRemaining--;
+        }
+
+        textRenderTimer = 120;
+    } else {
+        heldFramesRemaining = -1;
+    }
+
+    if (textRenderTimer <= 0) {
+        g3DTextDialog = -1;
+    } else {
+        textRenderTimer--;
+    }
+}
 
 /**
  * Starts a camera shake triggered by an interaction
@@ -3010,8 +3214,7 @@ void update_lakitu(struct Camera *c) {
  * Gets controller input, checks for cutscenes, handles mode changes, and moves the camera
  */
 void update_camera(struct Camera *c) {
-    UNUSED u8 filler[24];
-
+    restore_camera(&gLakituState);
     gCamera = c;
     update_camera_hud_status(c);
     if (c->cutscene == 0) {
@@ -3200,6 +3403,8 @@ void update_camera(struct Camera *c) {
     update_lakitu(c);
 
     gLakituState.lastFrameAction = sMarioCamState->action;
+
+    offset_camera(&gLakituState, CAMERATYPE_LAKITUSTATE);
 }
 
 /**
@@ -3483,6 +3688,8 @@ void zoom_out_if_paused_and_outside(struct GraphNodeCamera *camera) {
     } else {
         sFramesPaused = 0;
     }
+
+    offset_camera(camera, CAMERATYPE_GRAPHNODE);
 }
 
 void select_mario_cam_mode(void) {
@@ -3520,6 +3727,13 @@ void update_graph_node_camera(struct GraphNodeCamera *gc) {
     vec3f_copy(gc->pos, gLakituState.pos);
     vec3f_copy(gc->focus, gLakituState.focus);
     zoom_out_if_paused_and_outside(gc);
+}
+
+Gfx *geo_camera_default(UNUSED s32 callContext, struct GraphNode *g, UNUSED void *context) {
+    struct GraphNodeCamera *gc = (struct GraphNodeCamera *) g;
+    offset_camera(gc, CAMERATYPE_GRAPHNODE);
+
+    return NULL;
 }
 
 Gfx *geo_camera_main(s32 callContext, struct GraphNode *g, void *context) {

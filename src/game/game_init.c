@@ -8,6 +8,7 @@
 #include "buffers/gfx_output_buffer.h"
 #include "buffers/framebuffers.h"
 #include "buffers/zbuffer.h"
+#include "emutest.h"
 #include "engine/level_script.h"
 #include "game_init.h"
 #include "main.h"
@@ -32,6 +33,9 @@
 #endif
 #include <prevent_bss_reordering.h>
 
+// Emulators that the Instant Input patch should not be applied to
+#define INSTANT_INPUT_BLACKLIST (EMU_CONSOLE | EMU_WIIVC | EMU_ARES | EMU_SIMPLE64 | EMU_CEN64)
+
 // First 3 controller slots
 struct Controller gControllers[3];
 
@@ -45,8 +49,6 @@ struct GfxPool *gGfxPool;
 OSContStatus gControllerStatuses[4];
 OSContPad gControllerPads[4];
 u8 gControllerBits;
-u8 gIsConsole;
-u8 gCacheEmulated = TRUE;
 u8 gBorderHeight;
 #ifdef EEP
 s8 gEepromProbe;
@@ -63,7 +65,6 @@ OSMesg gGfxMesgBuf[1];
 struct VblankHandler gGameVblankHandler;
 
 // Buffers
-uintptr_t gPhysicalFramebuffers[3];
 uintptr_t gPhysicalZBuffer;
 
 // Mario Anims and Demo allocation
@@ -75,6 +76,10 @@ struct DmaHandlerList gDemoInputsBuf;
 // fillers
 UNUSED static u8 sfillerGameInit[0x90];
 UNUSED static s32 sUnusedGameInitValue = 0;
+
+#ifdef WIDE
+s32 gWidescreen = FALSE;
+#endif
 
 // General timer that runs as the game starts
 u32 gGlobalTimer = 0;
@@ -95,6 +100,14 @@ struct Controller *gPlayer3Controller = &gControllers[2]; // Probably debug only
 struct DemoInput *gCurrDemoInput = NULL;
 u16 gDemoInputListID = 0;
 struct DemoInput gRecordedDemoInput = { 0 };
+
+s32 g3DFrame = 0;
+enum Render3DOptions gRender3D = RENDER_3D_ENABLED;
+
+u8 gFBEEnabled = FALSE;
+u8 gCheckingFBE = 0;
+u8 gFBECheckFinished = FALSE;
+u8 gFBEBuffersSwapped = FALSE;
 
 // Display
 // ----------------------------------------------------------------------------------------------------
@@ -172,7 +185,7 @@ void select_framebuffer(void) {
 
     gDPSetCycleType(gDisplayListHead++, G_CYC_1CYCLE);
     gDPSetColorImage(gDisplayListHead++, G_IM_FMT_RGBA, G_IM_SIZ_16b, SCREEN_WIDTH,
-                     gPhysicalFramebuffers[sRenderingFramebuffer]);
+                     VIRTUAL_TO_PHYSICAL(gFramebuffers[sRenderingFramebuffer]));
     gDPSetScissor(gDisplayListHead++, G_SC_NON_INTERLACE, 0, gBorderHeight, SCREEN_WIDTH,
                   SCREEN_HEIGHT - gBorderHeight);
 }
@@ -359,7 +372,7 @@ void draw_reset_bars(void) {
             fbNum = sRenderedFramebuffer - 1;
         }
 
-        fbPtr = (u64 *) PHYSICAL_TO_VIRTUAL(gPhysicalFramebuffers[fbNum]);
+        fbPtr = (u64 *) gFramebuffers[fbNum];
         fbPtr += gNmiResetBarsTimer++ * (SCREEN_WIDTH / 4);
 
         for (width = 0; width < ((SCREEN_HEIGHT / 16) + 1); width++) {
@@ -374,33 +387,78 @@ void draw_reset_bars(void) {
     osRecvMesg(&gGameVblankQueue, &gMainReceivedMesg, OS_MESG_BLOCK);
 }
 
-void check_cache_emulation() {
-    // Disable interrupts to ensure that nothing evicts the variable from cache while we're using it.
-    u32 saved = __osDisableInt();
-    // Create a variable with an initial value of 1. This value will remain cached.
-    volatile u8 sCachedValue = 1;
-    // Overwrite the variable directly in RDRAM without going through cache.
-    // This should preserve its value of 1 in dcache if dcache is emulated correctly.
-    *(u8*)(K0_TO_K1(&sCachedValue)) = 0;
-    // Read the variable back from dcache, if it's still 1 then cache is emulated correctly.
-    // If it's zero, then dcache is not emulated correctly.
-    gCacheEmulated = sCachedValue;
-    // Restore interrupts
-    __osRestoreInt(saved);
+s32 check_fbe(UNUSED s16 arg0, UNUSED s32 arg1) {
+    if (gFBECheckFinished) {
+        return TRUE;
+    }
+    
+    if (sRenderingFramebuffer == 0) {
+        return FALSE;
+    }
+
+    // These will not support this effect!
+    if (gEmulator & INSTANT_INPUT_BLACKLIST) {
+        gFBEEnabled = FALSE;
+        gRender3D = RENDER_3D_UNSUPPORTED;
+        gFBECheckFinished = TRUE;
+        return TRUE;
+    }
+
+    gFramebuffers[1][13] = FBE_CHECK;
+    gFramebuffers[2][13] = FBE_CHECK;
+
+    gDPPipeSync(gDisplayListHead++);
+    gDPSetRenderMode(gDisplayListHead++, G_RM_OPA_SURF, G_RM_OPA_SURF2);
+    gDPSetCycleType(gDisplayListHead++, G_CYC_FILL);
+
+    gDPSetFillColor(gDisplayListHead++, (FBE_RED_BLUE_CHECK << 16) | FBE_RED_BLUE_CHECK);
+    gDPFillRectangle(gDisplayListHead++, 14, 0, 14, 0);
+
+    gDPPipeSync(gDisplayListHead++);
+    gDPSetCycleType(gDisplayListHead++, G_CYC_1CYCLE);
+
+    if (gCheckingFBE >= 2 && gFramebuffers[0][13] == FBE_CHECK) {
+        gFBEEnabled = TRUE;
+        gFBECheckFinished = TRUE;
+
+        // NOTE: For some reason, checking FBE_RED_CHECK instead at offset 13 and FBE_CHECK at 12 fails on some versions of GlideN64 (pain)
+        if (gFramebuffers[0][14] == FBE_RED_CHECK) {
+            gFBEBuffersSwapped = TRUE;
+        } else if (gFramebuffers[0][14] == FBE_BLUE_CHECK) {
+            // Some versions of GlideN64 have an odd number of frame lag, swapping the render order of the buffers apparently
+            gFBEBuffersSwapped = FALSE;
+        } else {
+            gFBEEnabled = FALSE;
+            gRender3D = RENDER_3D_MISSING_FBE;
+        }
+
+        return TRUE;
+    }
+    
+    gCheckingFBE++;
+
+    if (gCheckingFBE > 4) {
+        // For older versions of GlideN64 that for some reason treat the FB differently
+        if (gFramebuffers[0][14] == FBE_RED_CHECK || gFramebuffers[0][14] == FBE_BLUE_CHECK) {
+            gFBEEnabled = TRUE;
+            gFBECheckFinished = TRUE;
+            gFBEBuffersSwapped = FALSE;
+            return TRUE;
+        }
+
+        gFBEEnabled = FALSE;
+        gRender3D = RENDER_3D_MISSING_FBE;
+        gFBECheckFinished = TRUE;
+        return TRUE;
+    }
+
+    return FALSE;
 }
 
 /**
  * Initial settings for the first rendered frame.
  */
-void render_init(void) {
-    if (IO_READ(DPC_PIPEBUSY_REG) == 0) {
-        gIsConsole = 0;
-        gBorderHeight = BORDER_HEIGHT_EMULATOR;
-        check_cache_emulation();
-    } else {
-        gIsConsole = 1;
-        gBorderHeight = BORDER_HEIGHT_CONSOLE;
-    }    
+void render_init(void) { 
     gGfxPool = &gGfxPools[0];
     set_segment_base_addr(1, gGfxPool->buffer);
     gGfxSPTask = &gGfxPool->spTask;
@@ -412,7 +470,7 @@ void render_init(void) {
     exec_display_list(&gGfxPool->spTask);
 
     // Skip incrementing the initial framebuffer index on emulators other than Ares so that they display immediately as the Gfx task finishes
-    if (gIsConsole || gCacheEmulated) { // Read RDP Clock Register, has a value of zero on emulators
+    if (gEmulator & INSTANT_INPUT_BLACKLIST) {
         sRenderingFramebuffer++;
     }
     gGlobalTimer++;
@@ -437,6 +495,8 @@ void select_gfx_pool(void) {
  * - Selects which framebuffer will be rendered and displayed to next time.
  */
 void display_and_vsync(void) {
+    s32 mixToFB0;
+
     profiler_log_thread5_time(BEFORE_DISPLAY_LISTS);
     osRecvMesg(&gGfxVblankQueue, &gMainReceivedMesg, OS_MESG_BLOCK);
     if (gGoddardVblankCallback != NULL) {
@@ -446,19 +506,55 @@ void display_and_vsync(void) {
     exec_display_list(&gGfxPool->spTask);
     profiler_log_thread5_time(AFTER_DISPLAY_LISTS);
     osRecvMesg(&gGameVblankQueue, &gMainReceivedMesg, OS_MESG_BLOCK);
-    osViSwapBuffer((void *) PHYSICAL_TO_VIRTUAL(gPhysicalFramebuffers[sRenderedFramebuffer]));
+
+    osViSwapBuffer((void *) gFramebuffers[sRenderedFramebuffer]);
     profiler_log_thread5_time(THREAD5_END);
-    osRecvMesg(&gGameVblankQueue, &gMainReceivedMesg, OS_MESG_BLOCK);
-    // Skip swapping buffers on emulator other than Ares so that they display immediately as the Gfx task finishes
-    if (gIsConsole || gCacheEmulated) { // Read RDP Clock Register, has a value of zero on emulators
-        if (++sRenderedFramebuffer == 3) {
-            sRenderedFramebuffer = 0;
+    if (gRender3D != RENDER_3D_ENABLED) {
+        osRecvMesg(&gGameVblankQueue, &gMainReceivedMesg, OS_MESG_BLOCK);
+    }
+
+    if (gFBEBuffersSwapped) {
+        mixToFB0 = should_render_3d_frame(0);
+    } else {
+        mixToFB0 = should_render_3d_frame(1);
+    }
+
+    if (mixToFB0 && gRender3D == RENDER_3D_ENABLED) {
+        // Use u32 array instead to cut copy operations in half
+        u32 *fb0 = (u32*) gFramebuffers[0];
+        u32 *fb1 = (u32*) gFramebuffers[1];
+        u32 *fb2 = (u32*) gFramebuffers[2];
+        for (u32 i = 0; i < sizeof(gFramebuffers[0]) / sizeof(u32); i++) {
+            fb0[i] = (fb1[i] & 0x07FF07FF) | (fb2[i] & 0xF801F801);
         }
-        if (++sRenderingFramebuffer == 3) {
+    }
+
+    if (gRender3D == RENDER_3D_ENABLED) {
+        if (gFBEBuffersSwapped) {
+            sRenderingFramebuffer = (g3DFrame ^ 1) + 1;
+        } else {
+            sRenderingFramebuffer = g3DFrame + 1;
+        }
+        sRenderedFramebuffer = 0;
+    } else {
+        if (gEmulator & INSTANT_INPUT_BLACKLIST) { // Read RDP Clock Register, has a value of zero on emulators
+            if (++sRenderedFramebuffer == 3) {
+                sRenderedFramebuffer = 0;
+            }
+            if (++sRenderingFramebuffer == 3) {
+                sRenderingFramebuffer = 0;
+            }
+        } else {
+            sRenderedFramebuffer = 0;
             sRenderingFramebuffer = 0;
         }
     }
-    gGlobalTimer++;
+
+    if (should_render_3d_frame(1)) {
+        gGlobalTimer++;
+    }
+
+    g3DFrame ^= 1;
 }
 
 // this function records distinct inputs over a 255-frame interval to RAM locations and was likely
@@ -686,6 +782,14 @@ void init_controllers(void) {
 // Game thread core
 // ----------------------------------------------------------------------------------------------------
 
+s32 should_render_3d_frame(s32 frameIndex) {
+    if (frameIndex == g3DFrame || gRender3D != RENDER_3D_ENABLED) {
+        return TRUE;
+    }
+
+    return FALSE;
+}
+
 /**
  * Setup main segments and framebuffers.
  */
@@ -699,9 +803,6 @@ void setup_game_memory(void) {
     osCreateMesgQueue(&gGameVblankQueue, gGameMesgBuf, ARRAY_COUNT(gGameMesgBuf));
     // Setup z buffer and framebuffer
     gPhysicalZBuffer = VIRTUAL_TO_PHYSICAL(gZBuffer);
-    gPhysicalFramebuffers[0] = VIRTUAL_TO_PHYSICAL(gFramebuffer0);
-    gPhysicalFramebuffers[1] = VIRTUAL_TO_PHYSICAL(gFramebuffer1);
-    gPhysicalFramebuffers[2] = VIRTUAL_TO_PHYSICAL(gFramebuffer2);
     // Setup Mario Animations
     gMarioAnimsMemAlloc = main_pool_alloc(0x4000, MEMORY_POOL_LEFT);
     set_segment_base_addr(17, (void *) gMarioAnimsMemAlloc);
@@ -742,7 +843,14 @@ void thread5_game_loop(UNUSED void *arg) {
 
     play_music(SEQ_PLAYER_SFX, SEQUENCE_ARGS(0, SEQ_SOUND_PLAYER), 0);
     set_sound_mode(save_file_get_sound_mode());
+#ifdef WIDE
+    gWidescreen = save_file_get_widescreen_mode();
+#endif
     render_init();
+
+    if (gEmulator & INSTANT_INPUT_BLACKLIST) {
+        gRender3D = RENDER_3D_UNSUPPORTED;
+    }
 
     while (TRUE) {
         // If the reset timer is active, run the process to reset the game.
@@ -761,12 +869,27 @@ void thread5_game_loop(UNUSED void *arg) {
             osContStartReadData(&gSIEventMesgQueue);
         }
 
-        audio_game_loop_tick();
+        if (should_render_3d_frame(0)) {
+            audio_game_loop_tick();
+        }
         select_gfx_pool();
-        read_controller_inputs();
+        if (should_render_3d_frame(0)) {
+            read_controller_inputs();
+        } else {
+            release_rumble_pak_control();
+        }
+
+        offset_camera(&gLakituState, CAMERATYPE_LAKITUSTATE);
         addr = level_script_execute(addr);
 
+        restore_all_cameras();
+
         display_and_vsync();
+
+        // Do this at the very end of the frame
+        if (should_render_3d_frame(1)) {
+            calculate_camera_viewpoints();
+        }
 
         // when debug info is enabled, print the "BUF %d" information.
         if (gShowDebugText) {

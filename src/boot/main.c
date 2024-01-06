@@ -5,6 +5,7 @@
 
 #include "sm64.h"
 #include "audio/external.h"
+#include "game/emutest.h"
 #include "game/game_init.h"
 #include "game/memory.h"
 #include "game/sound_init.h"
@@ -315,6 +316,7 @@ void thread3_main(UNUSED void *arg) {
     setup_mesg_queues();
     alloc_pool();
     load_engine_code_segment();
+    detect_emulator();
 #ifndef UNF
     crash_screen_init();
 #endif
@@ -322,6 +324,12 @@ void thread3_main(UNUSED void *arg) {
 #ifdef UNF
     debug_initialize();
 #endif
+
+    if (!(gEmulator & EMU_CONSOLE)) {
+        gBorderHeight = BORDER_HEIGHT_EMULATOR;
+    } else {
+        gBorderHeight = BORDER_HEIGHT_CONSOLE;
+    }
 
 #ifdef DEBUG
     osSyncPrintf("Super Mario 64\n");

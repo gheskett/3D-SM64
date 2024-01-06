@@ -7,6 +7,7 @@
 #include "level_commands.h"
 
 #include "game/area.h"
+#include "game/game_init.h"
 #include "game/level_update.h"
 #include "menu/title_screen.h"
 
@@ -23,6 +24,8 @@ const LevelScript level_intro_splash_screen[] = {
     FIXED_LOAD(/*loadAddr*/ _goddardSegmentStart, /*romStart*/ _goddardSegmentRomStart, /*romEnd*/ _goddardSegmentRomEnd),
     LOAD_RAW(/*seg*/ 0x13, _behaviorSegmentRomStart, _behaviorSegmentRomEnd),
     LOAD_YAY0(/*seg*/ 0x07, _intro_segment_7SegmentRomStart, _intro_segment_7SegmentRomEnd),
+
+    CALL_LOOP(/*arg*/ 0, /*func*/ check_fbe),
 
     // Load "Super Mario 64" logo
     ALLOC_LEVEL_POOL(),

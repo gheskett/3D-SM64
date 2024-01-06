@@ -39,6 +39,7 @@
 s16 gMatStackIndex;
 Mat4 gMatStack[32];
 Mtx *gMatStackFixed[32];
+f32 sAspectRatio;
 
 /**
  * Animation nodes have state in global variables, so this struct captures
@@ -242,14 +243,17 @@ void geo_process_perspective(struct GraphNodePerspective *node) {
     if (node->fnNode.node.children != NULL) {
         u16 perspNorm;
         Mtx *mtx = alloc_display_list(sizeof(*mtx));
-
-#ifdef VERSION_EU
-        f32 aspect = ((f32) gCurGraphNodeRoot->width / (f32) gCurGraphNodeRoot->height) * 1.1f;
+#ifdef WIDE
+        if (gWidescreen && gCurrLevelNum != 0x01){
+            sAspectRatio = 16.0f / 9.0f; // 1.775f
+        } else {
+            sAspectRatio = 4.0f / 3.0f; // 1.33333f
+        }
 #else
-        f32 aspect = (f32) gCurGraphNodeRoot->width / (f32) gCurGraphNodeRoot->height;
+        sAspectRatio = 4.0f / 3.0f; // 1.33333f
 #endif
 
-        guPerspective(mtx, &perspNorm, node->fov, aspect, node->near, node->far, 1.0f);
+        guPerspective(mtx, &perspNorm, node->fov, sAspectRatio, node->near, node->far, 1.0f);
         gSPPerspNormalize(gDisplayListHead++, perspNorm);
 
         gSPMatrix(gDisplayListHead++, VIRTUAL_TO_PHYSICAL(mtx), G_MTX_PROJECTION | G_MTX_LOAD | G_MTX_NOPUSH);
@@ -755,7 +759,11 @@ s32 obj_is_in_view(struct GraphNodeObject *node, Mat4 matrix) {
     // ! @bug The aspect ratio is not accounted for. When the fov value is 45,
     // the horizontal effective fov is actually 60 degrees, so you can see objects
     // visibly pop in or out at the edge of the screen.
-    halfFov = (gCurGraphNodeCamFrustum->fov / 2.0f + 1.0f) * 32768.0f / 180.0f + 0.5f;
+#ifdef WIDE
+    halfFov = (((((gCurGraphNodeCamFrustum->fov * sAspectRatio) / 2.0f) + 1.0f) * 32768.0f) / 180.0f) + 0.5f;
+#else
+    halfFov = (gCurGraphNodeCamFrustum->fov / 2.0f + 1.0f) * 32768.0f / 180.0f + 0.5f; // Keep it vanilla-like if not allowing widescreen
+#endif
 
     hScreenEdge = -matrix[3][2] * sins(halfFov) / coss(halfFov);
     // -matrix[3][2] is the depth, which gets multiplied by tan(halfFov) to get
@@ -1054,13 +1062,17 @@ void geo_process_root(struct GraphNodeRoot *node, Vp *b, Vp *c, s32 clearColor) 
         vec3s_set(viewport->vp.vtrans, node->x * 4, node->y * 4, 511);
         vec3s_set(viewport->vp.vscale, node->width * 4, node->height * 4, 511);
         if (b != NULL) {
-            clear_framebuffer(clearColor);
+            if (gFBECheckFinished) {
+                clear_framebuffer(clearColor);
+            }
             make_viewport_clip_rect(b);
             *viewport = *b;
         }
 
         else if (c != NULL) {
-            clear_framebuffer(clearColor);
+            if (gFBECheckFinished) {
+                clear_framebuffer(clearColor);
+            }
             make_viewport_clip_rect(c);
         }
 

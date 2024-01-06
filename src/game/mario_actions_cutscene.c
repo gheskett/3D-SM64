@@ -166,7 +166,9 @@ void print_displaying_credits_entry(void) {
         }
 
         dl_rgba16_stop_cutscene_msg_fade();
-        sDispCreditsEntry = NULL;
+        if (should_render_3d_frame(1)) {
+            sDispCreditsEntry = NULL;
+        }
     }
 }
 

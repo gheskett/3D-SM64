@@ -11,6 +11,18 @@
 
 #define GFX_POOL_SIZE 6400 // Size of how large the master display list (gDisplayListHead) can be
 
+#define FBE_CHECK          0xFF01
+#define FBE_RED_BLUE_CHECK 0xF83F
+#define FBE_RED_CHECK      0xF801
+#define FBE_BLUE_CHECK     0x003F
+
+enum Render3DOptions {
+    RENDER_3D_DISABLED,
+    RENDER_3D_ENABLED,
+    RENDER_3D_MISSING_FBE,
+    RENDER_3D_UNSUPPORTED,
+};
+
 struct GfxPool {
     Gfx buffer[GFX_POOL_SIZE];
     struct SPTask spTask;
@@ -23,6 +35,10 @@ struct DemoInput {
     u8 buttonMask;
 };
 
+#ifdef WIDE
+extern s32 gWidescreen;
+#endif
+
 extern struct Controller gControllers[3];
 extern OSContStatus gControllerStatuses[4];
 extern OSContPad gControllerPads[4];
@@ -31,7 +47,6 @@ extern OSMesgQueue gGfxVblankQueue;
 extern OSMesg gGameMesgBuf[1];
 extern OSMesg gGfxMesgBuf[1];
 extern struct VblankHandler gGameVblankHandler;
-extern uintptr_t gPhysicalFramebuffers[3];
 extern uintptr_t gPhysicalZBuffer;
 extern void *gMarioAnimsMemAlloc;
 extern void *gDemoInputsMemAlloc;
@@ -40,9 +55,7 @@ extern Gfx *gDisplayListHead;
 extern u8 *gGfxPoolEnd;
 extern struct GfxPool *gGfxPool;
 extern u8 gControllerBits;
-extern u8 gIsConsole;
 extern u8 gBorderHeight;
-extern u8 gCacheEmulated;
 #ifdef EEP
 extern s8 gEepromProbe;
 #endif
@@ -69,6 +82,16 @@ extern u8 gDemoInputs[];
 extern u16 sRenderingFramebuffer;
 extern u32 gGlobalTimer;
 
+extern s32 g3DFrame;
+extern enum Render3DOptions gRender3D;
+
+extern u8 gFBEEnabled;
+extern u8 gCheckingFBE;
+extern u8 gFBECheckFinished;
+extern u8 gFBEBuffersSwapped;
+
+s32 should_render_3d_frame(s32 frameIndex);
+s32 check_fbe(s16 arg0, s32 arg1);
 void setup_game_memory(void);
 void thread5_game_loop(UNUSED void *arg);
 void clear_framebuffer(s32 color);

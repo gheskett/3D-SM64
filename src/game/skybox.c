@@ -2,13 +2,18 @@
 
 #include "area.h"
 #include "engine/math_util.h"
+#include "camera.h"
+#include "game_init.h"
 #include "geo_misc.h"
 #include "gfx_dimensions.h"
 #include "level_update.h"
 #include "memory.h"
+#include "print.h"
 #include "save_file.h"
 #include "segment2.h"
 #include "sm64.h"
+
+#define SKYBOX_AMPLIFIER 3.0f
 
 
 /**
@@ -301,6 +306,47 @@ Gfx *init_skybox_display_list(s8 player, s8 background, s8 colorIndex) {
 Gfx *create_skybox_facing_camera(s8 player, s8 background, f32 fov,
                                     f32 posX, f32 posY, f32 posZ,
                                     f32 focX, f32 focY, f32 focZ) {
+    if (gRender3D) {
+        s16 cameraPitch;
+        s16 cameraYaw;
+        f32 cameraFocusDist;
+        Vec3f pos = {posX, posY, posZ};
+        Vec3f focus = {focX, focY, focZ};
+
+        vec3f_get_dist_and_angle(pos, focus, &cameraFocusDist, &cameraPitch, &cameraYaw);
+
+        s16 newYaw = cameraYaw;
+        if (should_render_3d_frame(0)) {
+            newYaw += 0x4000;
+        } else {
+            newYaw -= 0x4000;
+        }
+
+        cameraFocusDist *= (f32) gViewOffset3DFocalPointDistPercentage / 100.0f;
+
+        if (cameraFocusDist < 0.01f) {
+            cameraFocusDist = 0.01f;
+        }
+
+        f32 amp = gViewOffset3DFocalPointDist * (SKYBOX_AMPLIFIER - 1.0f) / cameraFocusDist;
+
+        for (s32 i = 0; i < 3; i++) {
+            focus[i] = pos[i] + ((focus[i] - pos[i]) * amp);
+        }
+
+        f32 eyeDist = gViewOffset3DEyeDist * ((f32) gViewOffset3DEyeDistPercentage / 100.0f);
+
+        pos[0] += eyeDist * sins(newYaw) * (SKYBOX_AMPLIFIER - 1.0f);
+        pos[2] += eyeDist * coss(newYaw) * (SKYBOX_AMPLIFIER - 1.0f);
+
+        posX = pos[0];
+        posY = pos[1];
+        posZ = pos[2];
+        focX = focus[0];
+        focY = focus[1];
+        focZ = focus[2];
+    }
+
     f32 cameraFaceX = focX - posX;
     f32 cameraFaceY = focY - posY;
     f32 cameraFaceZ = focZ - posZ;
@@ -315,7 +361,19 @@ Gfx *create_skybox_facing_camera(s8 player, s8 background, f32 fov,
     //! fov is always set to 90.0f. If this line is removed, then the game crashes because fov is 0 on
     //! the first frame, which causes a floating point divide by 0
     fov = 90.0f;
+
     sSkyBoxInfo[player].yaw = atan2s(cameraFaceZ, cameraFaceX);
+    if (gRender3D) {
+        
+
+        
+        // if (g3DFrame == 0) {
+        //     print_text_fmt_int(16, 48, "%d", yaw);
+        //     sSkyBoxInfo[player].yaw += yaw;
+        // } else {
+        //     sSkyBoxInfo[player].yaw -= yaw;
+        // }
+    }
     sSkyBoxInfo[player].pitch = atan2s(sqrtf(cameraFaceX * cameraFaceX + cameraFaceZ * cameraFaceZ), cameraFaceY);
     sSkyBoxInfo[player].scaledX = calculate_skybox_scaled_x(player, fov);
     sSkyBoxInfo[player].scaledY = calculate_skybox_scaled_y(player, fov);

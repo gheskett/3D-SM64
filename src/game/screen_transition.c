@@ -19,6 +19,10 @@ u16 sTransitionTextureFadeCount[2] = { 0 };
 s32 set_and_reset_transition_fade_timer(s8 fadeTimer, u8 transTime) {
     s32 reset = FALSE;
 
+    if (!should_render_3d_frame(1)) {
+        return FALSE;
+    }
+
     sTransitionColorFadeCount[fadeTimer]++;
 
     if (sTransitionColorFadeCount[fadeTimer] == transTime) {

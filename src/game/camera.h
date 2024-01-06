@@ -641,6 +641,19 @@ struct LakituState {
     /*0xBC*/ s16 unused;
 };
 
+enum CameraPositionTypes {
+    CAMERATYPE_CAMERA,
+    CAMERATYPE_LAKITUSTATE,
+    CAMERATYPE_GRAPHNODE,
+};
+
+struct CameraPosition {
+    Vec3f pos;
+    Vec3f focus;
+    enum CameraPositionTypes cameraType;
+    void *cameraPointer;
+};
+
 // bss order hack to not affect BSS order. if possible, remove me, but it will be hard to match otherwise
 #ifndef INCLUDED_FROM_CAMERA_C
 // BSS
@@ -654,12 +667,31 @@ extern s32 gObjCutsceneDone;
 extern struct Camera *gCamera;
 #endif
 
+// Distance from camera to focal point of 3D image
+extern f32 gViewOffset3DFocalPointDist;
+
+// Half of the camera distance between left and right eye views
+extern f32 gViewOffset3DEyeDist;
+
+// Multiplier onto camera focal point distance, for user controlability with D-Pad
+extern s32 gViewOffset3DFocalPointDistPercentage;
+
+// Multiplier onto camera eye distance, for user controlability with D-Pad
+extern s32 gViewOffset3DEyeDistPercentage;
+
+// Dialog for printing 3D view text when view changes
+extern s32 g3DTextDialog;
+
 extern struct Object *gCutsceneFocus;
 extern struct Object *gSecondCameraFocus;
 extern u8 gRecentCutscene;
 
 // TODO: sort all of this extremely messy shit out after the split
 
+void restore_camera(void *cameraPointer);
+void restore_all_cameras(void);
+void offset_camera(void *cameraPointer, enum CameraPositionTypes cameraType);
+void calculate_camera_viewpoints(void);
 void set_camera_shake_from_hit(s16 shake);
 void set_environmental_camera_shake(s16 shake);
 void set_camera_shake_from_point(s16 shake, f32 posX, f32 posY, f32 posZ);
@@ -670,6 +702,7 @@ void update_camera(struct Camera *c);
 void reset_camera(struct Camera *c);
 void init_camera(struct Camera *c);
 void select_mario_cam_mode(void);
+Gfx *geo_camera_default(s32 callContext, struct GraphNode *g, void *context);
 Gfx *geo_camera_main(s32 callContext, struct GraphNode *g, void *context);
 void stub_camera_2(UNUSED struct Camera *c);
 void stub_camera_3(UNUSED struct Camera *c);

@@ -123,6 +123,10 @@ static void level_cmd_exit(void) {
 static void level_cmd_sleep(void) {
     sScriptStatus = SCRIPT_PAUSED;
 
+    if (!should_render_3d_frame(0)) {
+        return;
+    }
+
     if (sDelayFrames == 0) {
         sDelayFrames = CMD_GET(s16, 2);
     } else if (--sDelayFrames == 0) {
@@ -133,6 +137,10 @@ static void level_cmd_sleep(void) {
 
 static void level_cmd_sleep2(void) {
     sScriptStatus = SCRIPT_PAUSED2;
+
+    if (!should_render_3d_frame(0)) {
+        return;
+    }
 
     if (sDelayFrames2 == 0) {
         sDelayFrames2 = CMD_GET(s16, 2);
@@ -239,7 +247,12 @@ static void level_cmd_call(void) {
 static void level_cmd_call_loop(void) {
     typedef s32 (*Func)(s16, s32);
     Func func = CMD_GET(Func, 4);
-    sRegister = func(CMD_GET(s16, 2), sRegister);
+
+    if (!should_render_3d_frame(0)) {
+        sRegister = 0;
+    } else {
+        sRegister = func(CMD_GET(s16, 2), sRegister);
+    }
 
     if (sRegister == 0) {
         sScriptStatus = SCRIPT_PAUSED;

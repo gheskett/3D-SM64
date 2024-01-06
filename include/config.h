@@ -36,6 +36,10 @@
 // Support Rumble Pak
 #define ENABLE_RUMBLE (1 || VERSION_SH)
 
+
+// Enables widescreen (16:9) support.
+#define WIDE
+
 // Clear RAM on boot
 #define CLEARRAM 1
 

@@ -15,6 +15,7 @@
 #include "sound_init.h"
 #include "mario.h"
 #include "camera.h"
+#include "print.h"
 #include "object_list_processor.h"
 #include "ingame_menu.h"
 #include "obj_behaviors.h"
