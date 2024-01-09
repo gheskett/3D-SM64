@@ -35,13 +35,16 @@
 f32 gViewOffset3DFocalPointDist = 450.0f;
 
 // View distance from the camera source point (half the distance between left and right viewing channels)
-f32 gViewOffset3DEyeDist = 7.0f;
+f32 gViewOffset3DEyeDist = 14.0f;
 
 // Multiplier onto camera focal point distance, for user controlability with D-Pad
 s32 gViewOffset3DFocalPointDistPercentage = 100;
 
 // Multiplier onto camera eye distance, for user controlability with D-Pad
 s32 gViewOffset3DEyeDistPercentage = 100;
+
+// Overrideable multiplier for cutscenes, like peach intro
+f32 gViewOffset3DCutsceneEffectMultiplier = 1.0f;
 
 // Dialog for printing 3D view text when view changes
 s32 g3DTextDialog = -1;
@@ -504,7 +507,7 @@ CameraTransition sModeTransitions[] = {
 extern u8 sDanceCutsceneIndexTable[][4];
 extern u8 sZoomOutAreaMasks[];
 
-void restore_camera(void *cameraPointer) {
+void restore_camera(struct GraphNodeCamera *cameraPointer) {
     if (cameraPointer == NULL) {
         return;
     }
@@ -514,19 +517,10 @@ void restore_camera(void *cameraPointer) {
             continue;
         }
 
-        if (cameraHistory[i].cameraType == CAMERATYPE_CAMERA) {
-            struct Camera *c = (struct Camera*) cameraHistory[i].cameraPointer;
-            vec3f_copy(c->pos, cameraHistory[i].pos);
-            vec3f_copy(c->focus, cameraHistory[i].focus);
-        } else if (cameraHistory[i].cameraType == CAMERATYPE_LAKITUSTATE) {
-            struct LakituState *ls = (struct LakituState*) cameraHistory[i].cameraPointer;
-            vec3f_copy(ls->pos, cameraHistory[i].pos);
-            vec3f_copy(ls->focus, cameraHistory[i].focus);
-        } else if (cameraHistory[i].cameraType == CAMERATYPE_GRAPHNODE) {
-            struct GraphNodeCamera *gc = (struct GraphNodeCamera*) cameraHistory[i].cameraPointer;
-            vec3f_copy(gc->pos, cameraHistory[i].pos);
-            vec3f_copy(gc->focus, cameraHistory[i].focus);
-        }
+        struct GraphNodeCamera *gc = cameraHistory[i].cameraPointer;
+        vec3f_copy(gc->pos, cameraHistory[i].pos);
+        vec3f_copy(gc->focus, cameraHistory[i].focus);
+        gc->roll = cameraHistory[i].roll;
 
         cameraHistory[i].cameraPointer = NULL;
 
@@ -540,28 +534,20 @@ void restore_all_cameras(void) {
             continue;
         }
 
-        if (cameraHistory[i].cameraType == CAMERATYPE_CAMERA) {
-            struct Camera *c = (struct Camera*) cameraHistory[i].cameraPointer;
-            vec3f_copy(c->pos, cameraHistory[i].pos);
-            vec3f_copy(c->focus, cameraHistory[i].focus);
-        } else if (cameraHistory[i].cameraType == CAMERATYPE_LAKITUSTATE) {
-            struct LakituState *ls = (struct LakituState*) cameraHistory[i].cameraPointer;
-            vec3f_copy(ls->pos, cameraHistory[i].pos);
-            vec3f_copy(ls->focus, cameraHistory[i].focus);
-        } else if (cameraHistory[i].cameraType == CAMERATYPE_GRAPHNODE) {
-            struct GraphNodeCamera *gc = (struct GraphNodeCamera*) cameraHistory[i].cameraPointer;
-            vec3f_copy(gc->pos, cameraHistory[i].pos);
-            vec3f_copy(gc->focus, cameraHistory[i].focus);
-        }
+        struct GraphNodeCamera *gc = cameraHistory[i].cameraPointer;
+        vec3f_copy(gc->pos, cameraHistory[i].pos);
+        vec3f_copy(gc->focus, cameraHistory[i].focus);
+        gc->roll = cameraHistory[i].roll;
 
         cameraHistory[i].cameraPointer = NULL;
     }
 }
 
-void offset_camera(void *cameraPointer, enum CameraPositionTypes cameraType) {
+void offset_camera(struct GraphNodeCamera *cameraPointer) {
     s32 index = -1;
     s16 cameraPitch;
     s16 cameraYaw;
+    s16 *cameraRoll;
     f32 cameraFocusDist;
 
     f32 *pos;
@@ -581,40 +567,25 @@ void offset_camera(void *cameraPointer, enum CameraPositionTypes cameraType) {
         return;
     }
 
-    if (cameraType == CAMERATYPE_CAMERA) {
-        struct Camera *c = (struct Camera*) cameraPointer;
-        pos = c->pos;
-        focus = c->focus;
-    } else if (cameraType == CAMERATYPE_LAKITUSTATE) {
-        struct LakituState *ls = (struct LakituState*) cameraPointer;
-        pos = ls->pos;
-        focus = ls->focus;
-    } else if (cameraType == CAMERATYPE_GRAPHNODE) {
-        struct GraphNodeCamera *gc = (struct GraphNodeCamera*) cameraPointer;
-        pos = gc->pos;
-        focus = gc->focus;
-    } else {
-        return;
-    }
+    struct GraphNodeCamera *gc = cameraPointer;
+    pos = gc->pos;
+    focus = gc->focus;
+    cameraRoll = &gc->roll;
 
     vec3f_get_dist_and_angle(pos, focus, &cameraFocusDist, &cameraPitch, &cameraYaw);
     vec3f_copy(cameraHistory[index].pos, pos);
     vec3f_copy(cameraHistory[index].focus, focus);
     cameraHistory[index].cameraPointer = cameraPointer;
-    cameraHistory[index].cameraType = cameraType;
+    cameraHistory[index].roll = *cameraRoll;
 
     if (gRender3D != RENDER_3D_ENABLED) {
         return;
     }
 
-    s16 newYaw = cameraYaw;
-    if (should_render_3d_frame(0)) {
-        newYaw += 0x4000;
-    } else {
-        newYaw -= 0x4000;
-    }
+    f32 eyeDist = gViewOffset3DEyeDist * ((f32) gViewOffset3DEyeDistPercentage / 100.0f) * gViewOffset3DCutsceneEffectMultiplier;
+    f32 camDistMult = (f32) gViewOffset3DFocalPointDistPercentage / 100.0f;
 
-    cameraFocusDist *= (f32) gViewOffset3DFocalPointDistPercentage / 100.0f;
+    cameraFocusDist *= camDistMult;
 
     if (cameraFocusDist < 0.01f) {
         cameraFocusDist = 0.01f;
@@ -622,14 +593,29 @@ void offset_camera(void *cameraPointer, enum CameraPositionTypes cameraType) {
 
     f32 amp = gViewOffset3DFocalPointDist / cameraFocusDist;
 
+    s16 tan = atan2s(gViewOffset3DFocalPointDist * coss(cameraPitch) / camDistMult, eyeDist);
+    tan = sqrtf(ABS(tan));
+
     for (s32 i = 0; i < 3; i++) {
         focus[i] = pos[i] + ((focus[i] - pos[i]) * amp);
     }
 
-    f32 eyeDist = gViewOffset3DEyeDist * ((f32) gViewOffset3DEyeDistPercentage / 100.0f);
+    s16 newYaw = cameraYaw;
+    if (should_render_3d_frame(0)) {
+        newYaw += 0x4000;
+        *cameraRoll += tan;
+        pos[1] += eyeDist * sins(*cameraRoll);
+    } else {
+        newYaw -= 0x4000;
+        *cameraRoll -= tan;
+        pos[1] -= eyeDist * sins(*cameraRoll);
+    }
 
-    pos[0] += eyeDist * sins(newYaw);
-    pos[2] += eyeDist * coss(newYaw);
+    pos[0] += eyeDist * sins(newYaw) * coss(*cameraRoll);
+    pos[2] += eyeDist * coss(newYaw) * coss(*cameraRoll);
+
+    focus[0] += eyeDist * sins(newYaw) * (1.0f - coss(cameraPitch));
+    focus[2] += eyeDist * coss(newYaw) * (1.0f - coss(cameraPitch));
 }
 
 void calculate_camera_viewpoints(void) {
@@ -3214,7 +3200,6 @@ void update_lakitu(struct Camera *c) {
  * Gets controller input, checks for cutscenes, handles mode changes, and moves the camera
  */
 void update_camera(struct Camera *c) {
-    restore_camera(&gLakituState);
     gCamera = c;
     update_camera_hud_status(c);
     if (c->cutscene == 0) {
@@ -3403,8 +3388,6 @@ void update_camera(struct Camera *c) {
     update_lakitu(c);
 
     gLakituState.lastFrameAction = sMarioCamState->action;
-
-    offset_camera(&gLakituState, CAMERATYPE_LAKITUSTATE);
 }
 
 /**
@@ -3481,6 +3464,7 @@ void reset_camera(struct Camera *c) {
     gRecentCutscene = 0;
     unused8033B30C = 0;
     unused8033B310 = 0;
+    gViewOffset3DCutsceneEffectMultiplier = 1.0f;
 }
 
 void init_camera(struct Camera *c) {
@@ -3688,8 +3672,6 @@ void zoom_out_if_paused_and_outside(struct GraphNodeCamera *camera) {
     } else {
         sFramesPaused = 0;
     }
-
-    offset_camera(camera, CAMERATYPE_GRAPHNODE);
 }
 
 void select_mario_cam_mode(void) {
@@ -3727,11 +3709,20 @@ void update_graph_node_camera(struct GraphNodeCamera *gc) {
     vec3f_copy(gc->pos, gLakituState.pos);
     vec3f_copy(gc->focus, gLakituState.focus);
     zoom_out_if_paused_and_outside(gc);
+
+    offset_camera(gc);
 }
 
 Gfx *geo_camera_default(UNUSED s32 callContext, struct GraphNode *g, UNUSED void *context) {
     struct GraphNodeCamera *gc = (struct GraphNodeCamera *) g;
-    offset_camera(gc, CAMERATYPE_GRAPHNODE);
+
+    f32 eyeDistOld = gViewOffset3DEyeDist;
+    f32 focalPointDist = gViewOffset3DFocalPointDist;
+    gViewOffset3DEyeDist /= 3.0f;
+    gViewOffset3DEyeDist /= 2.0f;
+    offset_camera(gc);
+    gViewOffset3DEyeDist = eyeDistOld;
+    gViewOffset3DFocalPointDist = focalPointDist;
 
     return NULL;
 }

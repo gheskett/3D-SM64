@@ -641,17 +641,11 @@ struct LakituState {
     /*0xBC*/ s16 unused;
 };
 
-enum CameraPositionTypes {
-    CAMERATYPE_CAMERA,
-    CAMERATYPE_LAKITUSTATE,
-    CAMERATYPE_GRAPHNODE,
-};
-
 struct CameraPosition {
     Vec3f pos;
     Vec3f focus;
-    enum CameraPositionTypes cameraType;
-    void *cameraPointer;
+    s16 roll;
+    struct GraphNodeCamera *cameraPointer;
 };
 
 // bss order hack to not affect BSS order. if possible, remove me, but it will be hard to match otherwise
@@ -679,6 +673,9 @@ extern s32 gViewOffset3DFocalPointDistPercentage;
 // Multiplier onto camera eye distance, for user controlability with D-Pad
 extern s32 gViewOffset3DEyeDistPercentage;
 
+// Overrideable multiplier for cutscenes, like peach intro
+extern f32 gViewOffset3DCutsceneEffectMultiplier;
+
 // Dialog for printing 3D view text when view changes
 extern s32 g3DTextDialog;
 
@@ -688,9 +685,9 @@ extern u8 gRecentCutscene;
 
 // TODO: sort all of this extremely messy shit out after the split
 
-void restore_camera(void *cameraPointer);
+void restore_camera(struct GraphNodeCamera *cameraPointer);
 void restore_all_cameras(void);
-void offset_camera(void *cameraPointer, enum CameraPositionTypes cameraType);
+void offset_camera(struct GraphNodeCamera *cameraPointer);
 void calculate_camera_viewpoints(void);
 void set_camera_shake_from_hit(s16 shake);
 void set_environmental_camera_shake(s16 shake);

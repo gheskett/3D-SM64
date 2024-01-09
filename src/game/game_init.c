@@ -879,7 +879,6 @@ void thread5_game_loop(UNUSED void *arg) {
             release_rumble_pak_control();
         }
 
-        offset_camera(&gLakituState, CAMERATYPE_LAKITUSTATE);
         addr = level_script_execute(addr);
 
         restore_all_cameras();

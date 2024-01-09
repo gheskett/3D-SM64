@@ -32,6 +32,7 @@ void bhv_intro_peach_loop(void) {
             o->oIntroPeachYawFromFocus = -768.0f;
             o->oOpacity = 255;
             o->header.gfx.animInfo.animFrame = 100;
+            gViewOffset3DCutsceneEffectMultiplier = 0.25f;
             break;
 
         case 1:
@@ -55,6 +56,7 @@ void bhv_intro_peach_loop(void) {
 
             if (o->oTimer > 60) {
                 obj_mark_for_deletion(o);
+                gViewOffset3DCutsceneEffectMultiplier = 1.0f;
             }
             break;
     }

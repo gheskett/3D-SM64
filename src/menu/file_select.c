@@ -1619,6 +1619,10 @@ void bhv_menu_button_manager_loop(void) {
  * If the cursor is clicked, sClickPos uses the same value as sCursorPos.
  */
 void handle_cursor_button_input(void) {
+    if (!should_render_3d_frame(1)) {
+        return;
+    }
+
     // If scoring a file, pressing A just changes the coin score mode.
     if (sSelectedButtonID == MENU_BUTTON_SCORE_FILE_A || sSelectedButtonID == MENU_BUTTON_SCORE_FILE_B
         || sSelectedButtonID == MENU_BUTTON_SCORE_FILE_C
@@ -2829,12 +2833,15 @@ static void print_file_select_strings(void) {
     } else {
         sAllFilesExist = FALSE;
     }
-    // Timers for menu alpha text and the main menu itself
-    if (sTextBaseAlpha < 250) {
-        sTextBaseAlpha += 10;
-    }
-    if (sMainMenuTimer < 1000) {
-        sMainMenuTimer++;
+
+    if (should_render_3d_frame(1)) {
+        // Timers for menu alpha text and the main menu itself
+        if (sTextBaseAlpha < 250) {
+            sTextBaseAlpha += 10;
+        }
+        if (sMainMenuTimer < 1000) {
+            sMainMenuTimer++;
+        }
     }
 }
 

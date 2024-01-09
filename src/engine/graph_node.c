@@ -194,9 +194,6 @@ struct GraphNodeCamera *init_graph_node_camera(struct AllocOnlyPool *pool,
     }
 
     if (graphNode != NULL) {
-        if (func == NULL) {
-            func = geo_camera_default;
-        }
         init_scene_graph_node_links(&graphNode->fnNode.node, GRAPH_NODE_TYPE_CAMERA);
         vec3f_copy(graphNode->pos, pos);
         vec3f_copy(graphNode->focus, focus);
