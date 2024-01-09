@@ -55,6 +55,13 @@ struct GeoAnimState {
     /*0x0C*/ s16 *data;
 };
 
+struct ThrowMatrixSpares {
+    Mat4 **headerAddr;
+    Mat4 tm;
+} throwMatrixSpares[64];
+
+s32 throwMatrixSpacesCount = 0;
+
 // For some reason, this is a GeoAnimState struct, but the current state consists
 // of separate global variables. It won't match EU otherwise.
 struct GeoAnimState gGeoTempState;
@@ -811,10 +818,12 @@ s32 obj_is_in_view(struct GraphNodeObject *node, Mat4 matrix) {
  */
 void geo_process_object(struct Object *node) {
     Mat4 mtxf;
+    Mat4 *tmpThrowMatrix = NULL;
     s32 hasAnimation = (node->header.gfx.node.flags & GRAPH_RENDER_HAS_ANIMATION) != 0;
 
     if (node->header.gfx.areaIndex == gCurGraphNodeRoot->areaIndex) {
         if (node->header.gfx.throwMatrix != NULL) {
+            tmpThrowMatrix = node->header.gfx.throwMatrix;
             mtxf_mul(gMatStack[gMatStackIndex + 1], *node->header.gfx.throwMatrix,
                      gMatStack[gMatStackIndex]);
         } else if (node->header.gfx.node.flags & GRAPH_RENDER_BILLBOARD) {
@@ -855,7 +864,15 @@ void geo_process_object(struct Object *node) {
 
         gMatStackIndex--;
         gCurrAnimType = ANIM_TYPE_NONE;
-        node->header.gfx.throwMatrix = NULL;
+
+        if (should_render_3d_frame(1) || throwMatrixSpacesCount == ARRAY_COUNT(throwMatrixSpares) || tmpThrowMatrix == NULL) {
+            node->header.gfx.throwMatrix = NULL;
+        } else {
+            bcopy(&(*tmpThrowMatrix)[0][0], &throwMatrixSpares[throwMatrixSpacesCount].tm[0][0], sizeof(Mat4));
+            throwMatrixSpares[throwMatrixSpacesCount].headerAddr = &node->header.gfx.throwMatrix;
+            node->header.gfx.throwMatrix = &throwMatrixSpares[throwMatrixSpacesCount].tm;
+            throwMatrixSpacesCount++;
+        }
     }
 }
 
@@ -1092,5 +1109,14 @@ void geo_process_root(struct GraphNodeRoot *node, Vp *b, Vp *c, s32 clearColor) 
                                gDisplayListHeap->totalSpace - gDisplayListHeap->usedSpace);
         }
         main_pool_free(gDisplayListHeap);
+    }
+
+    if (should_render_3d_frame(1)) {
+        while (throwMatrixSpacesCount > 0) {
+            if (throwMatrixSpares[throwMatrixSpacesCount-1].headerAddr != NULL) {
+                *throwMatrixSpares[throwMatrixSpacesCount-1].headerAddr = NULL;
+            }
+            throwMatrixSpacesCount--;
+        }
     }
 }
