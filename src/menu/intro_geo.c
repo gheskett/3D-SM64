@@ -1,8 +1,10 @@
 #include <PR/ultratypes.h>
 
+#include "game/camera.h"
 #include "game/memory.h"
 #include "game/segment2.h"
 #include "game/segment7.h"
+#include "game/skybox.h"
 #include "intro_geo.h"
 #include "sm64.h"
 #include "textures.h"
@@ -145,16 +147,16 @@ static Gfx *intro_backdrop_one_image(s32 index, s8 *backgroundTable) {
 
     // intro screen background texture X offsets
     static float xCoords[] = {
-        0, 80, 160, 240,
-        0, 80, 160, 240,
-        0, 80, 160, 240,
+        -80, 0, 80, 160, 240, 300,
+        -80, 0, 80, 160, 240, 300,
+        -80, 0, 80, 160, 240, 300,
     };
 
     // intro screen background texture Y offsets
     static float yCoords[] = {
-        160, 160, 160, 160,
-        80,  80,  80,  80,
-        0,   0,   0,   0,
+        160, 160, 160, 160, 160, 160,
+        80,  80,  80,  80,  80,  80,
+        0,   0,   0,   0,   0,   0,
     };
 
     // table that points to either the "Super Mario 64" or "Game Over" tables
@@ -165,8 +167,21 @@ static Gfx *intro_backdrop_one_image(s32 index, s8 *backgroundTable) {
     Gfx *displayListIter = displayList;
     const u8 *const *vIntroBgTable = segmented_to_virtual(textureTables[backgroundTable[index]]);
     s32 i;
+    f32 offset = 0.0f;
 
-    guTranslate(mtx, xCoords[index], yCoords[index], 0.0f);
+    if (gRender3D == RENDER_3D_ENABLED) {
+        f32 eyeMult = (f32) gViewOffset3DEyeDistPercentage / 100.0f;
+        f32 focalDistMult = (f32) (gViewOffset3DFocalPointDistPercentage / 100.0f);
+        
+        // Just hardcode offsets, it's easier this way
+        if (should_render_3d_frame(0)) {
+            offset -= 2.25f * (eyeMult * focalDistMult);
+        } else {
+            offset += 2.25f * (eyeMult * focalDistMult);
+        }
+    }
+
+    guTranslate(mtx, xCoords[index] + offset, yCoords[index], 0.0f);
     gSPMatrix(displayListIter++, mtx, G_MTX_MODELVIEW | G_MTX_LOAD | G_MTX_PUSH);
     gSPDisplayList(displayListIter++, &title_screen_bg_dl_0A000118);
     for (i = 0; i < 4; ++i) {
@@ -180,6 +195,8 @@ static Gfx *intro_backdrop_one_image(s32 index, s8 *backgroundTable) {
 }
 
 static s8 introBackgroundIndexTable[] = {
+    INTRO_BACKGROUND_SUPER_MARIO, INTRO_BACKGROUND_SUPER_MARIO, INTRO_BACKGROUND_SUPER_MARIO,
+    INTRO_BACKGROUND_SUPER_MARIO, INTRO_BACKGROUND_SUPER_MARIO, INTRO_BACKGROUND_SUPER_MARIO,
     INTRO_BACKGROUND_SUPER_MARIO, INTRO_BACKGROUND_SUPER_MARIO, INTRO_BACKGROUND_SUPER_MARIO,
     INTRO_BACKGROUND_SUPER_MARIO, INTRO_BACKGROUND_SUPER_MARIO, INTRO_BACKGROUND_SUPER_MARIO,
     INTRO_BACKGROUND_SUPER_MARIO, INTRO_BACKGROUND_SUPER_MARIO, INTRO_BACKGROUND_SUPER_MARIO,
@@ -201,12 +218,12 @@ Gfx *geo_intro_regular_backdrop(s32 state, struct GraphNode *node, UNUSED void *
     s32 i;
 
     if (state == 1) {  // draw
-        dl = alloc_display_list(16 * sizeof(*dl));
+        dl = alloc_display_list((ARRAY_COUNT(introBackgroundIndexTable) + 4) * sizeof(*dl));
         dlIter = dl;
         graphNode->node.flags = (graphNode->node.flags & 0xFF) | (LAYER_OPAQUE << 8);
         gSPDisplayList(dlIter++, &dl_proj_mtx_fullscreen);
         gSPDisplayList(dlIter++, &title_screen_bg_dl_0A000100);
-        for (i = 0; i < 12; ++i) {
+        for (i = ARRAY_COUNT(introBackgroundIndexTable) - 1; i >= 0; --i) {
             gSPDisplayList(dlIter++, intro_backdrop_one_image(i, backgroundTable));
         }
         gSPDisplayList(dlIter++, &title_screen_bg_dl_0A000190);
@@ -216,6 +233,8 @@ Gfx *geo_intro_regular_backdrop(s32 state, struct GraphNode *node, UNUSED void *
 }
 
 static s8 gameOverBackgroundTable[] = {
+    INTRO_BACKGROUND_GAME_OVER, INTRO_BACKGROUND_GAME_OVER, INTRO_BACKGROUND_GAME_OVER,
+    INTRO_BACKGROUND_GAME_OVER, INTRO_BACKGROUND_GAME_OVER, INTRO_BACKGROUND_GAME_OVER,
     INTRO_BACKGROUND_GAME_OVER, INTRO_BACKGROUND_GAME_OVER, INTRO_BACKGROUND_GAME_OVER,
     INTRO_BACKGROUND_GAME_OVER, INTRO_BACKGROUND_GAME_OVER, INTRO_BACKGROUND_GAME_OVER,
     INTRO_BACKGROUND_GAME_OVER, INTRO_BACKGROUND_GAME_OVER, INTRO_BACKGROUND_GAME_OVER,
@@ -238,7 +257,7 @@ Gfx *geo_intro_gameover_backdrop(s32 state, struct GraphNode *node, UNUSED void 
         for (i = 0; i < ARRAY_COUNT(gameOverBackgroundTable); ++i)
             gameOverBackgroundTable[i] = INTRO_BACKGROUND_GAME_OVER;
     } else {  // draw
-        dl = alloc_display_list(16 * sizeof(*dl));
+        dl = alloc_display_list((ARRAY_COUNT(gameOverBackgroundTable) + 4) * sizeof(*dl));
         dlIter = dl;
         if (sGameOverTableIndex == -2) {
             if (sGameOverFrameCounter == 180 && should_render_3d_frame(1)) {
@@ -249,11 +268,19 @@ Gfx *geo_intro_gameover_backdrop(s32 state, struct GraphNode *node, UNUSED void 
             // transition tile from "Game Over" to "Super Mario 64"
             if (sGameOverTableIndex != 11 && !(sGameOverFrameCounter & 0x1) && should_render_3d_frame(1)) {
                 // order of tiles that are flipped from "Game Over" to "Super Mario 64"
-                static s8 flipOrder[] = { 0, 1, 2, 3, 7, 11, 10, 9, 8, 4, 5, 6 };
+                static s8 flipOrder[] = { 1, 2, 3, 4, 10, 16, 15, 14, 13, 7, 8, 9 };
 
                 sGameOverTableIndex++;
                 gameOverBackgroundTable[flipOrder[sGameOverTableIndex]] =
                     INTRO_BACKGROUND_SUPER_MARIO;
+                    
+                if (sGameOverTableIndex % 6 == 1) {
+                gameOverBackgroundTable[flipOrder[sGameOverTableIndex-1]] =
+                    INTRO_BACKGROUND_SUPER_MARIO;
+                } else if (sGameOverTableIndex % 6 == 4) {
+                gameOverBackgroundTable[flipOrder[sGameOverTableIndex+1]] =
+                    INTRO_BACKGROUND_SUPER_MARIO;
+                }
             }
         }
         if (sGameOverTableIndex != 11 && should_render_3d_frame(1)) {
@@ -264,8 +291,9 @@ Gfx *geo_intro_gameover_backdrop(s32 state, struct GraphNode *node, UNUSED void 
         // draw all the tiles
         gSPDisplayList(dlIter++, &dl_proj_mtx_fullscreen);
         gSPDisplayList(dlIter++, &title_screen_bg_dl_0A000100);
-        for (j = 0; j < ARRAY_COUNT(gameOverBackgroundTable); ++j)
+        for (j = ARRAY_COUNT(gameOverBackgroundTable) - 1; j >= 0; --j) {
             gSPDisplayList(dlIter++, intro_backdrop_one_image(j, gameOverBackgroundTable));
+        }
         gSPDisplayList(dlIter++, &title_screen_bg_dl_0A000190);
         gSPEndDisplayList(dlIter);
     }

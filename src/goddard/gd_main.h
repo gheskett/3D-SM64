@@ -69,7 +69,7 @@ struct GdControl { // gGdCtrl
     /* 0xDC */ u32 dragStartFrame; // first frame of new a press
     /* 0xE0 */ u8  filler8[8];
     /* 0xE8 */ u32 currFrame; // frame count?
-    /* 0xEC */ u8  filler9[4];
+    /* 0xEC */ u8  cameraTriggerB;
     /* 0xF0 */ struct GdControl *prevFrame; // previous frame data
 };
 

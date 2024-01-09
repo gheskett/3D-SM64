@@ -18,6 +18,7 @@
 #include "shape_helper.h"
 #include "skin.h"
 #include "types.h"
+#include "game/game_init.h"
 
 #define MAX_GD_DLS 1000
 #define OS_MESG_SI_COMPLETE 0x33333333
@@ -149,7 +150,7 @@ static s32 sLightId;
 static Hilite sHilites[600];
 static struct GdVec3f D_801BD758;
 static struct GdVec3f D_801BD768; // had to migrate earlier
-static u32 D_801BD774;
+UNUSED static u32 D_801BD774;
 static struct GdObj *sMenuGadgets[9]; // @ 801BD778; d_obj ptr storage? menu?
 static struct ObjView *sDebugViews[2];  // Seems to be a list of ObjViews for displaying debug info
 static struct GdDisplayList *sStaticDl;     // @ 801BD7A8
@@ -167,7 +168,7 @@ static LookAt D_801BE7D0[3];
 static OSMesgQueue D_801BE830; // controller msg queue
 static OSMesg D_801BE848[10];
 UNUSED static u32 unref_801be870[16];
-static OSMesgQueue D_801BE8B0;
+UNUSED static OSMesgQueue D_801BE8B0;
 static OSMesgQueue sGdDMAQueue; // @ 801BE8C8
 UNUSED static u32 unref_801be8e0[25];
 static OSMesg sGdMesgBuf[1]; // @ 801BE944
@@ -201,7 +202,7 @@ static s32 D_801A86BC = 1;
 static s32 D_801A86C0 = 0; // gd_dl id for something?
 UNUSED static u32 unref_801a86C4 = 10;
 static s32 sMtxParamType = G_MTX_PROJECTION;
-static struct GdVec3f D_801A86CC = { 1.0f, 1.0f, 1.0f };
+UNUSED static struct GdVec3f D_801A86CC = { 1.0f, 1.0f, 1.0f };
 static struct ObjView *sActiveView = NULL;  // @ 801A86D8 current view? used when drawing dl
 static struct ObjView *sScreenView = NULL; // @ 801A86DC
 static struct ObjView *D_801A86E0 = NULL;
@@ -2450,25 +2451,27 @@ void parse_p1_controller(void) {
     }
 
     // deadzone checks
-    if (ABS(gdctrl->stickX) >= 6) {
-        gdctrl->csrX += gdctrl->stickX * 0.1;
-    }
-    if (ABS(gdctrl->stickY) >= 6) {
-        gdctrl->csrY -= gdctrl->stickY * 0.1;
-    }
+    if (should_render_3d_frame(0)) {
+        if (ABS(gdctrl->stickX) >= 6) {
+            gdctrl->csrX += gdctrl->stickX * 0.1;
+        }
+        if (ABS(gdctrl->stickY) >= 6) {
+            gdctrl->csrY -= gdctrl->stickY * 0.1;
+        }
 
-    // clamp cursor position within screen view bounds
-    if (gdctrl->csrX < sScreenView->parent->upperLeft.x + 16.0f) {
-        gdctrl->csrX = sScreenView->parent->upperLeft.x + 16.0f;
-    }
-    if (gdctrl->csrX > sScreenView->parent->upperLeft.x + sScreenView->parent->lowerRight.x - 48.0f) {
-        gdctrl->csrX = sScreenView->parent->upperLeft.x + sScreenView->parent->lowerRight.x - 48.0f;
-    }
-    if (gdctrl->csrY < sScreenView->parent->upperLeft.y + 16.0f) {
-        gdctrl->csrY = sScreenView->parent->upperLeft.y + 16.0f;
-    }
-    if (gdctrl->csrY > sScreenView->parent->upperLeft.y + sScreenView->parent->lowerRight.y - 32.0f) {
-        gdctrl->csrY = sScreenView->parent->upperLeft.y + sScreenView->parent->lowerRight.y - 32.0f;
+        // clamp cursor position within screen view bounds
+        if (gdctrl->csrX < sScreenView->parent->upperLeft.x + 16.0f) {
+            gdctrl->csrX = sScreenView->parent->upperLeft.x + 16.0f;
+        }
+        if (gdctrl->csrX > sScreenView->parent->upperLeft.x + sScreenView->parent->lowerRight.x - 48.0f) {
+            gdctrl->csrX = sScreenView->parent->upperLeft.x + sScreenView->parent->lowerRight.x - 48.0f;
+        }
+        if (gdctrl->csrY < sScreenView->parent->upperLeft.y + 16.0f) {
+            gdctrl->csrY = sScreenView->parent->upperLeft.y + 16.0f;
+        }
+        if (gdctrl->csrY > sScreenView->parent->upperLeft.y + sScreenView->parent->lowerRight.y - 32.0f) {
+            gdctrl->csrY = sScreenView->parent->upperLeft.y + sScreenView->parent->lowerRight.y - 32.0f;
+        }
     }
 
     for (i = 0; i < sizeof(OSContPad); i++) {

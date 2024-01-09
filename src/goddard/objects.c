@@ -19,6 +19,7 @@
 #include "sfx.h"
 #include "shape_helper.h"
 #include "skin.h"
+#include "game/game_init.h"
 
 // structs
 struct Unk801B9E68 {
@@ -1593,7 +1594,7 @@ void move_camera(struct ObjCamera *cam) {
 
     sp2C = &cam->unk64;
     if ((cam->flags & CAMERA_FLAG_CONTROLLABLE) != 0) {
-        if (ctrl->btnB != FALSE && ctrl->prevFrame->btnB == FALSE) {  // new B press
+        if (gPlayer1Controller->buttonPressed & B_BUTTON) {  // new B press
             cam->zoomLevel++;
             if (cam->zoomLevel > cam->maxZoomLevel) {
                 cam->zoomLevel = 0;
@@ -1735,6 +1736,10 @@ void move_lights_in_grp(struct ObjGroup *group) {
 /* @ 22FB80 for 0xAC; orig name: func_801813B0 */
 void move_group_members(void) {
     s32 i;
+
+    if (!should_render_3d_frame(0)) {
+        return;
+    }
 
     if (gGdMoveScene != 0) {
         reset_gadgets_in_grp(sCurrentMoveGrp);

@@ -13,6 +13,9 @@
 #include "renderer.h"
 #include "shape_helper.h"
 #include "draw_objects.h"
+#include "engine/math_util.h"
+#include "game/camera.h"
+#include "game/game_init.h"
 
 /**
  * @file draw_objects.c
@@ -642,23 +645,28 @@ void draw_gadget(struct ObjGadget *gdgt) {
 
 /* 22803C -> 22829C */
 void draw_camera(struct ObjCamera *cam) {
-    struct GdVec3f sp44;
+    struct GdVec3f focus;
+    struct GdVec3f pos;
     UNUSED f32 sp40 = 0.0f;
 
-    sp44.x = 0.0f;
-    sp44.y = 0.0f;
-    sp44.z = 0.0f;
+    focus.x = 0.0f;
+    focus.y = 0.0f;
+    focus.z = 0.0f;
+    pos.x = cam->worldPos.x;
+    pos.y = cam->worldPos.y;
+    pos.z = cam->worldPos.z;
+
     if (cam->unk30 != NULL) {
         set_cur_dynobj(cam->unk30);
-        d_get_world_pos(&sp44);
-        sp44.x += cam->lookAt.x;
-        sp44.y += cam->lookAt.y;
-        sp44.z += cam->lookAt.z;
+        d_get_world_pos(&focus);
+        focus.x += cam->lookAt.x;
+        focus.y += cam->lookAt.y;
+        focus.z += cam->lookAt.z;
         ; // needed to match
     } else {
-        sp44.x = cam->lookAt.x;
-        sp44.y = cam->lookAt.y;
-        sp44.z = cam->lookAt.z;
+        focus.x = cam->lookAt.x;
+        focus.y = cam->lookAt.y;
+        focus.z = cam->lookAt.z;
     }
 
     if (0) {
@@ -666,11 +674,56 @@ void draw_camera(struct ObjCamera *cam) {
         gd_printf("%f,%f,%f\n", cam->worldPos.x, cam->worldPos.y, cam->worldPos.z);
     }
 
-    if (ABS(cam->worldPos.x - sp44.x) + ABS(cam->worldPos.z - sp44.z) == 0.0f) {
+    if (ABS(cam->worldPos.x - focus.x) + ABS(cam->worldPos.z - focus.z) == 0.0f) {
         gd_printf("Draw_Camera(): Zero view distance\n");
         return;
     }
-    gd_dl_lookat(cam, cam->worldPos.x, cam->worldPos.y, cam->worldPos.z, sp44.x, sp44.y, sp44.z, cam->unkA4);
+
+    s16 cameraPitch;
+    s16 cameraYaw;
+    f32 cameraFocusDist;
+    s16 cameraRoll = 0;
+
+    vec3f_get_dist_and_angle((f32*) &pos, (f32*) &focus, &cameraFocusDist, &cameraPitch, &cameraYaw);
+
+    if (gRender3D != RENDER_3D_ENABLED) {
+        gd_dl_lookat(cam, pos.x, pos.y, pos.z, focus.x, focus.y, focus.z, cam->unkA4);
+        return;
+    }
+
+    f32 eyeDist = gViewOffset3DEyeDist * ((f32) gViewOffset3DEyeDistPercentage / 100.0f) * 0.5f;
+    f32 camDistMult = (f32) gViewOffset3DFocalPointDistPercentage / 100.0f;
+
+    cameraFocusDist *= camDistMult;
+
+    if (cameraFocusDist < 0.01f) {
+        cameraFocusDist = 0.01f;
+    }
+
+    f32 amp = gViewOffset3DFocalPointDist / cameraFocusDist;
+
+    s16 tan = atan2s(gViewOffset3DFocalPointDist * coss(cameraPitch) / camDistMult, eyeDist);
+    tan = sqrtf(ABS(tan));
+
+    focus.x = pos.x + ((focus.x - pos.x) * amp);
+    focus.y = pos.y + ((focus.y - pos.y) * amp);
+    focus.z = pos.z + ((focus.z - pos.z) * amp);
+
+    s16 newYaw = cameraYaw;
+    if (should_render_3d_frame(0)) {
+        newYaw -= 0x4000;
+        cameraRoll -= tan;
+        pos.y -= eyeDist * sins(cameraRoll);
+    } else {
+        newYaw += 0x4000;
+        cameraRoll += tan;
+        pos.y += eyeDist * sins(cameraRoll);
+    }
+
+    pos.x += eyeDist * sins(newYaw) * coss(cameraRoll);
+    pos.z += eyeDist * coss(newYaw) * coss(cameraRoll);
+
+    gd_dl_lookat(cam, pos.x, pos.y, pos.z, focus.x, focus.y, focus.z, cam->unkA4);
 }
 
 /**

@@ -52,6 +52,7 @@ u8 gWarpTransGreen = 0;
 u8 gWarpTransBlue = 0;
 s16 gCurrSaveFileNum = 1;
 s16 gCurrLevelNum = LEVEL_MIN;
+s32 gPlayIntroTextOffFrame = FALSE;
 
 /*
  * The following two tables are used in get_mario_spawn_type() to determine spawn type
@@ -125,6 +126,12 @@ void print_intro_text(void) {
             print_text_centered(60, 20, "START");
 #endif
         }
+    }
+
+    if (should_render_3d_frame(1)) {
+        gPlayIntroTextOffFrame = FALSE;
+    } else {
+        gPlayIntroTextOffFrame = TRUE;
     }
 }
 
@@ -390,6 +397,10 @@ void render_game(void) {
                 print_text_fmt_int(160, 24, "%d", gViewOffset3DFocalPointDistPercentage);
             }
             break;
+    }
+
+    if (gPlayIntroTextOffFrame) {
+        print_intro_text();
     }
 
     if (gCurrentArea != NULL && !gWarpTransition.pauseRendering) {

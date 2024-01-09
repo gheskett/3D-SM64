@@ -147,6 +147,8 @@ extern struct Area *gCurrentArea;
 extern s16 gCurrSaveFileNum;
 extern s16 gCurrLevelNum;
 
+extern s32 gPlayIntroTextOffFrame;
+
 
 void override_viewport_and_clip(Vp *a, Vp *b, u8 c, u8 d, u8 e);
 void print_intro_text(void);

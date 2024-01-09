@@ -3718,8 +3718,8 @@ Gfx *geo_camera_default(UNUSED s32 callContext, struct GraphNode *g, UNUSED void
 
     f32 eyeDistOld = gViewOffset3DEyeDist;
     f32 focalPointDist = gViewOffset3DFocalPointDist;
-    gViewOffset3DEyeDist /= 3.0f;
-    gViewOffset3DEyeDist /= 2.0f;
+    gViewOffset3DEyeDist *= 0.25f;
+    gViewOffset3DFocalPointDist *= 2.0f;
     offset_camera(gc);
     gViewOffset3DEyeDist = eyeDistOld;
     gViewOffset3DFocalPointDist = focalPointDist;

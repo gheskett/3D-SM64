@@ -11,9 +11,8 @@
 #include "print.h"
 #include "save_file.h"
 #include "segment2.h"
+#include "skybox.h"
 #include "sm64.h"
-
-#define SKYBOX_3D_OFFSET 0x200
 
 /**
  * @file skybox.c

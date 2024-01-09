@@ -251,7 +251,7 @@ void geo_process_perspective(struct GraphNodePerspective *node) {
         u16 perspNorm;
         Mtx *mtx = alloc_display_list(sizeof(*mtx));
 #ifdef WIDE
-        if (gWidescreen && gCurrLevelNum != 0x01){
+        if (gWidescreen && gCurrLevelNum != 0x01 && gCurrLevelNum != LEVEL_FILE_SELECT){
             sAspectRatio = 16.0f / 9.0f; // 1.775f
         } else {
             sAspectRatio = 4.0f / 3.0f; // 1.33333f

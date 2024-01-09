@@ -10,6 +10,7 @@
 #define DEG_PER_RAD 57.29577950560105
 #define RAD_PER_DEG (1.0 / DEG_PER_RAD)
 
+#undef ABS
 #define ABS(val) (((val) < 0 ? (-(val)) : (val)))
 #define SQ(val) ((val) * (val))
 
